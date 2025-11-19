@@ -1,0 +1,131 @@
+id: "B004"
+title: "Ingress 리소스 구성"
+domain: "Services & Networking"
+difficulty: "medium"
+weight: 6
+time_estimate: 10
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  여러 서비스를 단일 진입점으로 노출하기 위한 Ingress를 구성해야 합니다.
+
+task: |
+  다음 요구사항을 만족하는 Ingress 리소스를 생성하세요:
+
+  1. Ingress 정보:
+     - 이름: app-ingress
+     - 네임스페이스: production
+     - Ingress Class: nginx
+
+  2. 라우팅 규칙:
+     - 호스트: app.example.com
+     - 경로 /api -> backend-svc:8080
+     - 경로 / -> frontend-svc:80
+
+  3. TLS 설정:
+     - Secret 이름: app-tls
+     - 호스트: app.example.com
+
+hints:
+  - "Ingress Controller가 설치되어 있어야 합니다"
+  - "TLS Secret은 미리 생성되어 있다고 가정"
+  - "pathType은 Prefix 또는 Exact 사용"
+
+validation:
+  checks:
+    - resource: "ingress"
+      name: "app-ingress"
+      namespace: "production"
+
+solution: |
+  해결 방법:
+
+  ```bash
+  # (선택) TLS Secret 생성 (테스트용)
+  kubectl create secret tls app-tls \
+    --cert=/tmp/tls.crt \
+    --key=/tmp/tls.key \
+    -n production
+
+  # Ingress 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    name: app-ingress
+    namespace: production
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+  spec:
+    ingressClassName: nginx
+    tls:
+    - hosts:
+      - app.example.com
+      secretName: app-tls
+    rules:
+    - host: app.example.com
+      http:
+        paths:
+        - path: /api
+          pathType: Prefix
+          backend:
+            service:
+              name: backend-svc
+              port:
+                number: 8080
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: frontend-svc
+              port:
+                number: 80
+  EOF
+
+  # 확인
+  kubectl get ingress app-ingress -n production
+  kubectl describe ingress app-ingress -n production
+
+  # 테스트 (Ingress Controller가 설치된 경우)
+  curl -H "Host: app.example.com" http://<ingress-ip>/
+  curl -H "Host: app.example.com" http://<ingress-ip>/api
+  ```
+
+explanation: |
+  이 문제는 Ingress를 통한 HTTP(S) 라우팅 구성을 평가합니다.
+
+  Ingress란:
+  - HTTP(S) 트래픽을 서비스로 라우팅
+  - 외부 접근을 위한 단일 진입점
+  - 호스트 기반, 경로 기반 라우팅
+  - TLS/SSL 종료
+
+  주요 개념:
+
+  1. Ingress Controller
+     - Ingress 규칙을 실제로 구현
+     - NGINX, Traefik, HAProxy 등
+     - 클러스터에 별도 설치 필요
+
+  2. Path Types
+     - Exact: 정확히 일치
+     - Prefix: 접두사 일치
+     - ImplementationSpecific: 컨트롤러 구현 의존
+
+  3. Annotations
+     - 컨트롤러별 특수 설정
+     - 예: rewrite-target, ssl-redirect
+
+  실무 패턴:
+  - 단일 Ingress로 여러 서비스 노출
+  - 호스트별 라우팅 (multi-tenancy)
+  - 경로별 라우팅 (마이크로서비스)
+  - TLS 인증서 자동 갱신 (cert-manager)
+
+  LoadBalancer vs Ingress:
+  - LoadBalancer: 서비스당 하나의 LB (비용)
+  - Ingress: 하나의 LB로 여러 서비스 (효율적)
+
+references:
+  - "https://kubernetes.io/docs/concepts/services-networking/ingress/"

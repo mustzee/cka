@@ -1,0 +1,119 @@
+id: "B002"
+title: "Network Policy 구성"
+domain: "Services & Networking"
+difficulty: "hard"
+weight: 7
+time_estimate: 12
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  보안 요구사항을 충족하기 위해 네트워크 정책을 구성해야 합니다.
+
+task: |
+  다음 요구사항을 만족하는 NetworkPolicy를 생성하세요:
+
+  1. NetworkPolicy 정보:
+     - 이름: db-network-policy
+     - 네임스페이스: production
+
+  2. 정책 규칙:
+     - app=database 레이블이 있는 Pod에 적용
+     - Ingress 규칙:
+       * app=backend 레이블이 있는 Pod로부터의 트래픽만 허용
+       * 포트 3306 (MySQL)만 허용
+     - Egress 규칙:
+       * 모든 Egress 트래픽 차단 (DNS 제외)
+
+hints:
+  - "NetworkPolicy는 CNI 플러그인이 지원해야 합니다"
+  - "podSelector로 정책 적용 대상 선택"
+  - "from/to 필드로 트래픽 소스/목적지 지정"
+
+validation:
+  checks:
+    - resource: "networkpolicy"
+      name: "db-network-policy"
+      namespace: "production"
+
+solution: |
+  해결 방법:
+
+  ```bash
+  # NetworkPolicy 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    name: db-network-policy
+    namespace: production
+  spec:
+    podSelector:
+      matchLabels:
+        app: database
+    policyTypes:
+    - Ingress
+    - Egress
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app: backend
+      ports:
+      - protocol: TCP
+        port: 3306
+    egress:
+    - to:
+      - namespaceSelector: {}
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+      ports:
+      - protocol: UDP
+        port: 53
+  EOF
+
+  # 확인
+  kubectl get networkpolicy -n production
+  kubectl describe networkpolicy db-network-policy -n production
+
+  # 테스트용 Pod 생성
+  kubectl run backend --image=busybox -l app=backend -n production \
+    -- sleep 3600
+  kubectl run database --image=mysql:8 -l app=database -n production \
+    --env="MYSQL_ROOT_PASSWORD=password"
+
+  # 연결 테스트
+  kubectl exec -it backend -n production -- nc -zv database 3306
+  ```
+
+explanation: |
+  이 문제는 Network Policy를 통한 네트워크 보안 구성 능력을 평가합니다.
+
+  핵심 개념:
+  - NetworkPolicy는 Pod 간 통신을 제어하는 방화벽 규칙
+  - 기본적으로 모든 트래픽 허용 (정책이 없는 경우)
+  - 정책이 적용되면 명시적으로 허용된 트래픽만 통과
+
+  정책 타입:
+  1. Ingress: 들어오는 트래픽 제어
+  2. Egress: 나가는 트래픽 제어
+
+  셀렉터:
+  - podSelector: 같은 네임스페이스의 Pod 선택
+  - namespaceSelector: 다른 네임스페이스 선택
+  - ipBlock: IP 주소 범위 선택
+
+  실무 적용:
+  - Zero Trust 네트워크 보안 구현
+  - 데이터베이스는 백엔드에서만 접근 허용
+  - 프론트엔드는 백엔드에만 접근 허용
+  - DNS 트래픽은 항상 허용
+
+  일반적인 패턴:
+  1. Default Deny: 모든 트래픽 차단 후 필요한 것만 허용
+  2. Namespace Isolation: 네임스페이스 간 격리
+  3. External Access Control: 외부 트래픽 제어
+
+references:
+  - "https://kubernetes.io/docs/concepts/services-networking/network-policies/"

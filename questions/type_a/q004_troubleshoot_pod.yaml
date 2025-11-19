@@ -1,0 +1,106 @@
+id: "A004"
+title: "Pod 트러블슈팅"
+domain: "Troubleshooting"
+difficulty: "medium"
+weight: 6
+time_estimate: 10
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  default 네임스페이스에 broken-app이라는 이름의 Pod가 있지만 제대로 작동하지 않습니다.
+
+task: |
+  다음 작업을 수행하세요:
+
+  1. broken-app Pod의 문제를 확인하고 수정하세요
+  2. Pod가 Running 상태가 되도록 하세요
+  3. /tmp/fix-log.txt 파일에 발견한 문제와 해결 방법을 기록하세요
+
+  참고: Pod는 이미 생성되어 있습니다.
+
+hints:
+  - "kubectl describe pod 명령어로 이벤트 확인"
+  - "kubectl logs 명령어로 로그 확인"
+  - "이미지 이름, 리소스 제한, 환경 변수 등을 확인하세요"
+
+validation:
+  checks:
+    - resource: "pod"
+      name: "broken-app"
+      namespace: "default"
+      conditions:
+        - type: "Ready"
+          status: "True"
+
+    - file: "/tmp/fix-log.txt"
+      exists: true
+
+solution: |
+  해결 방법:
+
+  ```bash
+  # 1. Pod 상태 확인
+  kubectl get pod broken-app
+  kubectl describe pod broken-app
+
+  # 2. 문제 확인 (예: 이미지 이름 오타)
+  # Events를 보면 ImagePullBackOff 또는 CrashLoopBackOff 등
+
+  # 3. Pod YAML 확인 및 수정
+  kubectl get pod broken-app -o yaml > /tmp/broken-app.yaml
+
+  # 4. Pod 삭제
+  kubectl delete pod broken-app
+
+  # 5. 수정된 YAML로 재생성
+  # 예: nginx:latests -> nginx:latest로 수정
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: broken-app
+  spec:
+    containers:
+    - name: nginx
+      image: nginx:latest
+  EOF
+
+  # 6. 문제 해결 로그 작성
+  cat <<EOF > /tmp/fix-log.txt
+  문제: ImagePullBackOff - 잘못된 이미지 이름
+  원인: nginx:latests (오타)
+  해결: nginx:latest로 수정
+  EOF
+
+  # 7. 확인
+  kubectl get pod broken-app
+  ```
+
+explanation: |
+  이 문제는 Pod 트러블슈팅 능력을 평가합니다.
+
+  일반적인 Pod 문제:
+  1. ImagePullBackOff: 이미지를 가져올 수 없음
+     - 이미지 이름 오타
+     - 레지스트리 인증 실패
+     - 이미지가 존재하지 않음
+
+  2. CrashLoopBackOff: 컨테이너가 반복적으로 실패
+     - 애플리케이션 오류
+     - 잘못된 명령어
+     - 필수 환경 변수 누락
+
+  3. Pending: Pod가 스케줄링되지 않음
+     - 리소스 부족
+     - NodeSelector 불일치
+     - PVC 바인딩 실패
+
+  트러블슈팅 단계:
+  1. kubectl get pod - 현재 상태 확인
+  2. kubectl describe pod - 이벤트 및 상세 정보
+  3. kubectl logs - 컨테이너 로그
+  4. kubectl events - 클러스터 이벤트
+
+references:
+  - "https://kubernetes.io/docs/tasks/debug/debug-application/"

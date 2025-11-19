@@ -1,0 +1,99 @@
+id: "B001"
+title: "ETCD 백업 및 복구"
+domain: "Cluster Architecture"
+difficulty: "hard"
+weight: 8
+time_estimate: 15
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  클러스터의 ETCD 데이터베이스를 백업하고 복구하는 작업을 수행해야 합니다.
+
+task: |
+  다음 작업을 수행하세요:
+
+  1. ETCD 스냅샷 생성:
+     - 스냅샷 파일: /tmp/etcd-backup.db
+     - ETCD 엔드포인트: https://127.0.0.1:2379
+     - CA 인증서: /etc/kubernetes/pki/etcd/ca.crt
+     - 서버 인증서: /etc/kubernetes/pki/etcd/server.crt
+     - 서버 키: /etc/kubernetes/pki/etcd/server.key
+
+  2. 백업 검증:
+     - etcdctl snapshot status 명령어로 백업 파일 확인
+
+hints:
+  - "etcdctl snapshot save 명령어 사용"
+  - "ETCDCTL_API=3 환경 변수 설정 필요"
+  - "인증서 경로는 클러스터 설정에 따라 다를 수 있습니다"
+
+validation:
+  checks:
+    - file: "/tmp/etcd-backup.db"
+      exists: true
+      min_size: 1048576  # 1MB
+
+solution: |
+  해결 방법:
+
+  ```bash
+  # 1. ETCD Pod 확인 (control plane 노드에서)
+  kubectl get pod -n kube-system | grep etcd
+
+  # 2. ETCD 엔드포인트 및 인증서 경로 확인
+  kubectl describe pod -n kube-system etcd-<control-plane-name>
+
+  # 3. ETCD 스냅샷 생성
+  ETCDCTL_API=3 etcdctl snapshot save /tmp/etcd-backup.db \
+    --endpoints=https://127.0.0.1:2379 \
+    --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+    --cert=/etc/kubernetes/pki/etcd/server.crt \
+    --key=/etc/kubernetes/pki/etcd/server.key
+
+  # 4. 스냅샷 확인
+  ETCDCTL_API=3 etcdctl snapshot status /tmp/etcd-backup.db --write-out=table
+
+  # 5. (선택) 스냅샷 복구 (테스트용)
+  # ETCDCTL_API=3 etcdctl snapshot restore /tmp/etcd-backup.db \
+  #   --data-dir=/var/lib/etcd-restore
+
+  # 출력 예시:
+  # +----------+----------+------------+------------+
+  # |   HASH   | REVISION | TOTAL KEYS | TOTAL SIZE |
+  # +----------+----------+------------+------------+
+  # | 12345678 |    12345 |       1234 |      10 MB |
+  # +----------+----------+------------+------------+
+  ```
+
+explanation: |
+  이 문제는 ETCD 백업 및 복구 능력을 평가합니다.
+
+  ETCD란:
+  - Kubernetes의 모든 클러스터 데이터를 저장하는 분산 키-값 저장소
+  - 고가용성과 일관성을 제공
+  - 백업은 재해 복구의 핵심
+
+  백업 전략:
+  1. 정기적인 스냅샷 생성 (예: 매일)
+  2. 스냅샷을 안전한 외부 저장소에 보관
+  3. 정기적인 복구 테스트
+
+  ETCD 복구 시나리오:
+  1. 데이터 손실 발생
+  2. 클러스터 중지
+  3. 스냅샷에서 데이터 복구
+  4. 클러스터 재시작
+
+  주의사항:
+  - ETCD 복구는 클러스터를 중지시킵니다
+  - 프로덕션 환경에서는 신중하게 수행
+  - 복구 전 현재 상태도 백업
+
+  실무 적용:
+  - 자동화된 백업 스크립트 설정
+  - 크론잡으로 정기 백업
+  - 백업 파일 암호화 및 오프사이트 저장
+
+references:
+  - "https://kubernetes.io/docs/tasks/administer-cluster/configure-upgrade-etcd/#backing-up-an-etcd-cluster"

@@ -1,0 +1,242 @@
+id: "C002"
+title: "StatefulSet을 사용한 상태 유지 애플리케이션 배포"
+domain: "Workloads & Scheduling"
+difficulty: "hard"
+weight: 10
+time_estimate: 20
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  데이터베이스 클러스터를 Kubernetes에 배포해야 합니다.
+  각 인스턴스는 고유한 ID와 영구 스토리지가 필요합니다.
+
+task: |
+  다음 요구사항을 만족하는 StatefulSet을 구성하세요:
+
+  1. StatefulSet:
+     - 이름: mysql-cluster
+     - 네임스페이스: database
+     - 레플리카: 3
+     - 이미지: mysql:8.0
+     - 서비스명: mysql
+     - 레이블: app=mysql, tier=database
+
+  2. 환경 변수:
+     - MYSQL_ROOT_PASSWORD: secret123 (Secret 사용)
+
+  3. 볼륨:
+     - volumeClaimTemplate 사용
+     - 스토리지: 1Gi per Pod
+     - accessMode: ReadWriteOnce
+     - storageClassName: standard
+
+  4. Headless Service:
+     - 이름: mysql
+     - 포트: 3306
+     - clusterIP: None
+
+  5. 리소스:
+     - CPU: request 250m, limit 500m
+     - Memory: request 512Mi, limit 1Gi
+
+  6. Health Check:
+     - Liveness: exec mysqladmin ping
+     - Readiness: exec mysql -e "SELECT 1"
+
+hints:
+  - "네임스페이스를 먼저 생성하세요"
+  - "Secret을 먼저 생성하세요"
+  - "Headless Service는 StatefulSet보다 먼저 생성"
+  - "StatefulSet Pod는 순차적으로 생성됩니다"
+
+validation:
+  checks:
+    - resource: "namespace"
+      name: "database"
+
+    - resource: "statefulset"
+      name: "mysql-cluster"
+      namespace: "database"
+      conditions:
+        - field: "spec.replicas"
+          value: 3
+
+    - resource: "service"
+      name: "mysql"
+      namespace: "database"
+
+solution: |
+  해결 방법:
+
+  ```bash
+  # 1. 네임스페이스 생성
+  kubectl create namespace database
+
+  # 2. Secret 생성
+  kubectl create secret generic mysql-secret \
+    --from-literal=MYSQL_ROOT_PASSWORD=secret123 \
+    -n database
+
+  # 3. Headless Service 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: mysql
+    namespace: database
+    labels:
+      app: mysql
+  spec:
+    clusterIP: None
+    selector:
+      app: mysql
+    ports:
+    - port: 3306
+      name: mysql
+  EOF
+
+  # 4. StatefulSet 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: StatefulSet
+  metadata:
+    name: mysql-cluster
+    namespace: database
+  spec:
+    serviceName: mysql
+    replicas: 3
+    selector:
+      matchLabels:
+        app: mysql
+    template:
+      metadata:
+        labels:
+          app: mysql
+          tier: database
+      spec:
+        containers:
+        - name: mysql
+          image: mysql:8.0
+          env:
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secret
+                key: MYSQL_ROOT_PASSWORD
+          ports:
+          - containerPort: 3306
+            name: mysql
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          volumeMounts:
+          - name: data
+            mountPath: /var/lib/mysql
+          livenessProbe:
+            exec:
+              command:
+              - mysqladmin
+              - ping
+              - -h
+              - localhost
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+              - mysql
+              - -h
+              - localhost
+              - -e
+              - "SELECT 1"
+            initialDelaySeconds: 10
+            periodSeconds: 5
+    volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        storageClassName: standard
+        resources:
+          requests:
+            storage: 1Gi
+  EOF
+
+  # 5. 확인
+  kubectl get statefulset -n database
+  kubectl get pods -n database -l app=mysql
+  kubectl get pvc -n database
+  kubectl get svc mysql -n database
+
+  # 6. Pod 순차 생성 확인
+  kubectl get pods -n database -w
+
+  # 7. DNS 테스트
+  kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup mysql-cluster-0.mysql.database.svc.cluster.local
+
+  # 각 Pod는 고유 DNS 이름을 가짐:
+  # mysql-cluster-0.mysql.database.svc.cluster.local
+  # mysql-cluster-1.mysql.database.svc.cluster.local
+  # mysql-cluster-2.mysql.database.svc.cluster.local
+  ```
+
+explanation: |
+  이 문제는 StatefulSet을 통한 상태 유지 애플리케이션 관리를 평가합니다.
+
+  StatefulSet vs Deployment:
+
+  Deployment:
+  - 상태 비저장 애플리케이션
+  - Pod는 동일하고 교체 가능
+  - 랜덤한 이름과 IP
+  - 볼륨 공유 가능
+
+  StatefulSet:
+  - 상태 유지 애플리케이션
+  - 각 Pod는 고유한 ID
+  - 예측 가능한 이름 (mysql-0, mysql-1, ...)
+  - 각 Pod마다 별도 PVC
+  - 안정적인 네트워크 ID
+
+  StatefulSet 특징:
+
+  1. 순차적 배포/삭제
+     - Pod는 순서대로 생성 (0, 1, 2, ...)
+     - 삭제는 역순 (2, 1, 0, ...)
+     - 이전 Pod가 Running/Ready 되어야 다음 생성
+
+  2. 안정적인 네트워크 ID
+     - Headless Service 필요
+     - 각 Pod: <pod-name>.<service-name>.<namespace>.svc.cluster.local
+     - 재시작 후에도 동일한 이름
+
+  3. 영구 스토리지
+     - volumeClaimTemplates로 자동 PVC 생성
+     - Pod 삭제 후에도 PVC 유지
+     - Pod 재생성 시 동일한 PVC 재연결
+
+  Headless Service:
+  - clusterIP: None
+  - 로드밸런싱 없이 각 Pod에 직접 접근
+  - DNS로 모든 Pod 주소 반환
+
+  실무 사용 사례:
+  - 데이터베이스 (MySQL, PostgreSQL, MongoDB)
+  - 메시지 큐 (Kafka, RabbitMQ)
+  - 분산 저장소 (Cassandra, Elasticsearch)
+  - ZooKeeper, etcd 클러스터
+
+  주의사항:
+  - StatefulSet 삭제 시 PVC는 자동 삭제 안 됨
+  - 수동으로 PVC 정리 필요
+  - 스케일 다운 시 데이터 백업 필수
+
+references:
+  - "https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/"
+  - "https://kubernetes.io/docs/tutorials/stateful-application/mysql-wordpress-persistent-volume/"

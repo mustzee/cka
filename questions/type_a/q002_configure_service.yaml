@@ -1,0 +1,94 @@
+id: "A002"
+title: "Service 생성 및 구성"
+domain: "Services & Networking"
+difficulty: "easy"
+weight: 4
+time_estimate: 5
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  production 네임스페이스의 web-server Deployment에 접근하기 위한 Service를 생성해야 합니다.
+
+task: |
+  다음 요구사항을 만족하는 Service를 생성하세요:
+
+  - 이름: web-service
+  - 네임스페이스: production
+  - 타입: NodePort
+  - 포트: 80
+  - 타겟 포트: 80
+  - NodePort: 30080
+  - 셀렉터: app=web
+
+hints:
+  - "kubectl expose 또는 kubectl create service 사용 가능"
+  - "NodePort 범위는 30000-32767입니다"
+
+validation:
+  checks:
+    - resource: "service"
+      name: "web-service"
+      namespace: "production"
+      conditions:
+        - field: "spec.type"
+          value: "NodePort"
+        - field: "spec.ports[0].port"
+          value: 80
+        - field: "spec.ports[0].nodePort"
+          value: 30080
+
+solution: |
+  해결 방법:
+
+  ```bash
+  # Service 생성 (명령형)
+  kubectl expose deployment web-server \
+    --name=web-service \
+    --type=NodePort \
+    --port=80 \
+    --target-port=80 \
+    -n production
+
+  # NodePort 수정
+  kubectl patch service web-service -n production \
+    -p '{"spec":{"ports":[{"port":80,"nodePort":30080}]}}'
+
+  # 또는 YAML 파일 사용
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: web-service
+    namespace: production
+  spec:
+    type: NodePort
+    selector:
+      app: web
+    ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080
+  EOF
+
+  # 확인
+  kubectl get service web-service -n production
+  curl localhost:30080
+  ```
+
+explanation: |
+  이 문제는 Service를 통한 네트워킹 구성 능력을 평가합니다.
+
+  핵심 개념:
+  - Service는 Pod에 대한 안정적인 네트워크 엔드포인트를 제공합니다
+  - NodePort는 모든 노드의 특정 포트로 서비스를 노출합니다
+  - 셀렉터를 통해 트래픽을 라우팅할 Pod를 선택합니다
+
+  Service 타입:
+  - ClusterIP: 클러스터 내부에서만 접근 (기본값)
+  - NodePort: 노드의 포트로 외부 노출
+  - LoadBalancer: 클라우드 로드밸런서 사용
+  - ExternalName: DNS CNAME 레코드
+
+references:
+  - "https://kubernetes.io/docs/concepts/services-networking/service/"

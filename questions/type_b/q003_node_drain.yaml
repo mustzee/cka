@@ -1,0 +1,99 @@
+id: "B003"
+title: "클러스터 노드 유지보수 및 드레이닝"
+domain: "Cluster Architecture"
+difficulty: "medium"
+weight: 6
+time_estimate: 10
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  워커 노드 중 하나에 유지보수를 수행해야 합니다.
+
+task: |
+  다음 작업을 수행하세요:
+
+  1. 레이블이 node-type=worker인 노드 중 하나를 선택
+  2. 해당 노드를 스케줄링 불가능(unschedulable)으로 표시
+  3. 노드에서 실행 중인 모든 Pod를 안전하게 다른 노드로 이동
+  4. /tmp/drained-node.txt 파일에 드레이닝한 노드 이름 기록
+
+hints:
+  - "kubectl cordon 명령어로 스케줄링 비활성화"
+  - "kubectl drain 명령어로 Pod 이동"
+  - "--ignore-daemonsets 옵션 필요할 수 있음"
+  - "kubectl uncordon으로 다시 활성화"
+
+validation:
+  checks:
+    - file: "/tmp/drained-node.txt"
+      exists: true
+
+solution: |
+  해결 방법:
+
+  ```bash
+  # 1. 워커 노드 조회
+  kubectl get nodes -l node-type=worker
+
+  # 노드 이름 확인 (예: worker-node-1)
+  NODE_NAME=$(kubectl get nodes -l node-type=worker -o jsonpath='{.items[0].metadata.name}')
+
+  # 2. 노드를 스케줄링 불가능으로 표시
+  kubectl cordon $NODE_NAME
+
+  # 3. 노드 드레이닝 (Pod 안전하게 이동)
+  kubectl drain $NODE_NAME \
+    --ignore-daemonsets \
+    --delete-emptydir-data \
+    --force
+
+  # 4. 노드 이름 기록
+  echo $NODE_NAME > /tmp/drained-node.txt
+
+  # 확인
+  kubectl get nodes
+  # STATUS에 SchedulingDisabled가 표시됨
+
+  # (선택) 유지보수 완료 후 노드 다시 활성화
+  # kubectl uncordon $NODE_NAME
+  ```
+
+explanation: |
+  이 문제는 노드 유지보수를 위한 드레이닝 작업을 평가합니다.
+
+  노드 관리 명령어:
+
+  1. kubectl cordon
+     - 노드를 스케줄링 불가능으로 표시
+     - 기존 Pod는 계속 실행
+     - 새로운 Pod는 해당 노드에 스케줄링 안 됨
+
+  2. kubectl drain
+     - 노드의 Pod를 안전하게 다른 노드로 이동
+     - 자동으로 cordon 수행
+     - Eviction API 사용 (graceful termination)
+
+  3. kubectl uncordon
+     - 노드를 다시 스케줄링 가능으로 표시
+
+  Drain 옵션:
+  - --ignore-daemonsets: DaemonSet Pod 무시 (필수)
+  - --delete-emptydir-data: emptyDir 볼륨 삭제 허용
+  - --force: ReplicaSet 없는 Pod 강제 삭제
+  - --grace-period: 종료 유예 시간
+  - --timeout: 타임아웃
+
+  실무 시나리오:
+  - 노드 OS 업그레이드
+  - 하드웨어 교체
+  - 노드 축소
+  - 보안 패치 적용
+
+  주의사항:
+  - PodDisruptionBudget 고려
+  - Stateful 애플리케이션은 주의 필요
+  - 드레이닝 전 백업 권장
+
+references:
+  - "https://kubernetes.io/docs/tasks/administer-cluster/safely-drain-node/"

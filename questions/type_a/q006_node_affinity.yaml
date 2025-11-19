@@ -1,0 +1,95 @@
+id: "A006"
+title: "Node Affinity를 사용한 Pod 스케줄링"
+domain: "Workloads & Scheduling"
+difficulty: "medium"
+weight: 5
+time_estimate: 8
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  특정 노드에 Pod를 스케줄링하는 작업을 수행해야 합니다.
+
+task: |
+  다음 요구사항을 만족하는 Pod를 생성하세요:
+
+  - 이름: scheduled-pod
+  - 네임스페이스: default
+  - 이미지: nginx:latest
+  - Node Affinity 규칙:
+    * disk=ssd 레이블이 있는 노드에만 스케줄링
+    * 선호도: requiredDuringSchedulingIgnoredDuringExecution
+
+hints:
+  - "kubectl label node 명령어로 노드에 레이블 추가 가능"
+  - "affinity.nodeAffinity 필드 사용"
+  - "matchExpressions로 조건 지정"
+
+validation:
+  checks:
+    - resource: "pod"
+      name: "scheduled-pod"
+      namespace: "default"
+      conditions:
+        - type: "Ready"
+          status: "True"
+
+solution: |
+  해결 방법:
+
+  ```bash
+  # 노드에 레이블 추가 (아직 없는 경우)
+  kubectl label node <node-name> disk=ssd
+
+  # Pod 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: scheduled-pod
+    namespace: default
+  spec:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+          - matchExpressions:
+            - key: disk
+              operator: In
+              values:
+              - ssd
+    containers:
+    - name: nginx
+      image: nginx:latest
+  EOF
+
+  # 확인
+  kubectl get pod scheduled-pod -o wide
+  ```
+
+explanation: |
+  이 문제는 Node Affinity를 통한 고급 스케줄링을 평가합니다.
+
+  Node Affinity vs NodeSelector:
+  - NodeSelector: 간단한 키-밸류 매칭
+  - Node Affinity: 더 표현력 있는 규칙
+
+  Affinity 타입:
+  1. requiredDuringSchedulingIgnoredDuringExecution
+     - 하드 제약: 조건을 만족하는 노드에만 스케줄링
+     - 실행 중에는 무시 (노드 레이블 변경되어도 Pod 유지)
+
+  2. preferredDuringSchedulingIgnoredDuringExecution
+     - 소프트 제약: 가능하면 조건 만족하는 노드에 스케줄링
+     - 조건 불만족 시 다른 노드에도 스케줄링 가능
+
+  Operators:
+  - In: 값이 리스트에 포함
+  - NotIn: 값이 리스트에 미포함
+  - Exists: 키 존재 (값 무관)
+  - DoesNotExist: 키 미존재
+  - Gt: 값이 더 큼
+  - Lt: 값이 더 작음
+
+references:
+  - "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity"

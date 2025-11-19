@@ -1,0 +1,111 @@
+id: "A003"
+title: "PersistentVolume 및 PersistentVolumeClaim 생성"
+domain: "Storage"
+difficulty: "medium"
+weight: 5
+time_estimate: 8
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  애플리케이션을 위한 영구 스토리지를 구성해야 합니다.
+
+task: |
+  다음 요구사항을 만족하는 PV와 PVC를 생성하세요:
+
+  PersistentVolume:
+  - 이름: app-pv
+  - 용량: 1Gi
+  - 액세스 모드: ReadWriteOnce
+  - hostPath: /data/app
+  - storageClassName: manual
+
+  PersistentVolumeClaim:
+  - 이름: app-pvc
+  - 네임스페이스: default
+  - 요청 용량: 500Mi
+  - 액세스 모드: ReadWriteOnce
+  - storageClassName: manual
+
+hints:
+  - "PV는 클러스터 레벨 리소스입니다"
+  - "PVC는 네임스페이스 레벨 리소스입니다"
+  - "PVC는 적절한 PV에 자동으로 바인딩됩니다"
+
+validation:
+  checks:
+    - resource: "persistentvolume"
+      name: "app-pv"
+      conditions:
+        - field: "spec.capacity.storage"
+          value: "1Gi"
+        - field: "status.phase"
+          value: "Bound"
+
+    - resource: "persistentvolumeclaim"
+      name: "app-pvc"
+      namespace: "default"
+      conditions:
+        - field: "status.phase"
+          value: "Bound"
+
+solution: |
+  해결 방법:
+
+  ```bash
+  # PersistentVolume 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: PersistentVolume
+  metadata:
+    name: app-pv
+  spec:
+    capacity:
+      storage: 1Gi
+    accessModes:
+    - ReadWriteOnce
+    storageClassName: manual
+    hostPath:
+      path: /data/app
+  EOF
+
+  # PersistentVolumeClaim 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: app-pvc
+    namespace: default
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 500Mi
+    storageClassName: manual
+  EOF
+
+  # 확인
+  kubectl get pv app-pv
+  kubectl get pvc app-pvc
+  ```
+
+explanation: |
+  이 문제는 Kubernetes의 영구 스토리지 관리 능력을 평가합니다.
+
+  핵심 개념:
+  - PV는 클러스터의 스토리지 리소스입니다
+  - PVC는 사용자의 스토리지 요청입니다
+  - PVC는 적절한 PV에 자동으로 바인딩됩니다
+
+  액세스 모드:
+  - ReadWriteOnce (RWO): 단일 노드에서 읽기/쓰기
+  - ReadOnlyMany (ROX): 여러 노드에서 읽기 전용
+  - ReadWriteMany (RWX): 여러 노드에서 읽기/쓰기
+
+  실무 적용:
+  - 프로덕션에서는 hostPath 대신 네트워크 스토리지 사용
+  - StorageClass를 통해 동적 프로비저닝 구성
+
+references:
+  - "https://kubernetes.io/docs/concepts/storage/persistent-volumes/"

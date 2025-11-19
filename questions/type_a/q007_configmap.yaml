@@ -1,0 +1,126 @@
+id: "A007"
+title: "ConfigMap 생성 및 Pod에 마운트"
+domain: "Cluster Architecture"
+difficulty: "easy"
+weight: 4
+time_estimate: 6
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  애플리케이션 설정을 ConfigMap으로 관리하고 Pod에서 사용해야 합니다.
+
+task: |
+  다음 작업을 수행하세요:
+
+  1. ConfigMap 생성:
+     - 이름: app-config
+     - 네임스페이스: default
+     - 데이터:
+       * app.properties: "env=production\nlog_level=info"
+       * database.url: "mysql://db.example.com:3306"
+
+  2. Pod 생성:
+     - 이름: config-test-pod
+     - 이미지: busybox:latest
+     - 명령어: sleep 3600
+     - ConfigMap을 /etc/config 디렉토리에 볼륨으로 마운트
+
+hints:
+  - "kubectl create configmap 명령어 사용"
+  - "volumes와 volumeMounts 필드 사용"
+
+validation:
+  checks:
+    - resource: "configmap"
+      name: "app-config"
+      namespace: "default"
+
+    - resource: "pod"
+      name: "config-test-pod"
+      namespace: "default"
+
+solution: |
+  해결 방법:
+
+  ```bash
+  # ConfigMap 생성
+  kubectl create configmap app-config \
+    --from-literal=database.url=mysql://db.example.com:3306 \
+    -n default
+
+  # app.properties 파일 생성 후 추가
+  echo -e "env=production\nlog_level=info" > /tmp/app.properties
+  kubectl create configmap app-config \
+    --from-file=/tmp/app.properties \
+    --from-literal=database.url=mysql://db.example.com:3306 \
+    -n default \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+  # 또는 YAML로 직접 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: app-config
+    namespace: default
+  data:
+    app.properties: |
+      env=production
+      log_level=info
+    database.url: "mysql://db.example.com:3306"
+  EOF
+
+  # Pod 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: config-test-pod
+    namespace: default
+  spec:
+    containers:
+    - name: busybox
+      image: busybox:latest
+      command: ["sleep", "3600"]
+      volumeMounts:
+      - name: config-volume
+        mountPath: /etc/config
+    volumes:
+    - name: config-volume
+      configMap:
+        name: app-config
+  EOF
+
+  # 확인
+  kubectl get configmap app-config -o yaml
+  kubectl exec config-test-pod -- ls /etc/config
+  kubectl exec config-test-pod -- cat /etc/config/app.properties
+  ```
+
+explanation: |
+  이 문제는 ConfigMap을 통한 설정 관리를 평가합니다.
+
+  ConfigMap 사용 방법:
+  1. 환경 변수로 주입
+  2. 명령줄 인자로 사용
+  3. 볼륨으로 마운트 (파일로 사용)
+
+  ConfigMap 생성 방법:
+  - --from-literal: 직접 키-값 지정
+  - --from-file: 파일에서 읽기
+  - --from-env-file: 환경 변수 파일
+  - YAML 매니페스트
+
+  실무 적용:
+  - 환경별 설정 분리 (dev, staging, prod)
+  - 설정 변경 시 이미지 재빌드 불필요
+  - 민감 정보는 Secret 사용
+
+  주의사항:
+  - ConfigMap은 암호화되지 않음
+  - 크기 제한: 1MB
+  - ConfigMap 변경 시 Pod 재시작 필요 (일부 경우)
+
+references:
+  - "https://kubernetes.io/docs/concepts/configuration/configmap/"
