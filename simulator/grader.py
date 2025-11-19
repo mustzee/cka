@@ -4,15 +4,55 @@
 
 import subprocess
 import json
-from typing import Dict, Any, List, Tuple
+import re
+import os
+import tempfile
+from typing import Dict, Any, List, Tuple, Optional
 import yaml
 
 
 class AutoGrader:
-    """CKA 시험 자동 채점기"""
+    """CKA 시험 자동 채점기 (고급 기능 포함)"""
 
     def __init__(self):
         self.kubectl_cmd = "kubectl"
+        self.jq_available = self._check_jq_available()
+
+    def _check_jq_available(self) -> bool:
+        """jq 명령어 사용 가능 여부 확인"""
+        try:
+            subprocess.run(["jq", "--version"], capture_output=True, timeout=5)
+            return True
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+
+    def run_command(self, cmd: List[str], timeout: int = 30) -> Tuple[bool, str, str]:
+        """
+        일반 명령어 실행 (고급 기능)
+
+        Args:
+            cmd: 명령어 리스트
+            timeout: 타임아웃 (초)
+
+        Returns:
+            (성공 여부, stdout, stderr)
+        """
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            return (
+                result.returncode == 0,
+                result.stdout.strip(),
+                result.stderr.strip(),
+            )
+        except subprocess.TimeoutExpired:
+            return False, "", "명령어 실행 시간 초과"
+        except Exception as e:
+            return False, "", f"오류: {str(e)}"
 
     def run_kubectl(self, args: List[str]) -> Tuple[bool, str]:
         """

@@ -1,0 +1,91 @@
+id: "B005"
+title: "Multi-Container Pod 패턴"
+domain: "Workloads & Scheduling"
+difficulty: "hard"
+weight: 7
+time_estimate: 12
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  로그를 수집하는 사이드카 패턴을 구현해야 합니다.
+
+task: |
+  다음 요구사항을 만족하는 Multi-Container Pod를 생성하세요:
+
+  - 이름: multi-container-pod
+  - 네임스페이스: default
+
+  Container 1 (메인 애플리케이션):
+  - 이름: app
+  - 이미지: busybox:latest
+  - 명령어: sh -c "while true; do echo $(date) >> /var/log/app.log; sleep 5; done"
+  - 볼륨 마운트: /var/log (emptyDir)
+
+  Container 2 (로그 수집기):
+  - 이름: log-collector
+  - 이미지: busybox:latest
+  - 명령어: sh -c "tail -f /var/log/app.log"
+  - 볼륨 마운트: /var/log (emptyDir, readOnly)
+
+hints:
+  - "하나의 Pod에 여러 containers 배열"
+  - "emptyDir로 컨테이너 간 데이터 공유"
+
+validation:
+  checks:
+    - resource: "pod"
+      name: "multi-container-pod"
+      namespace: "default"
+
+solution: |
+  해결 방법:
+
+  ```bash
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: multi-container-pod
+    namespace: default
+  spec:
+    containers:
+    - name: app
+      image: busybox:latest
+      command:
+      - sh
+      - -c
+      - while true; do echo \$(date) >> /var/log/app.log; sleep 5; done
+      volumeMounts:
+      - name: logs
+        mountPath: /var/log
+    - name: log-collector
+      image: busybox:latest
+      command:
+      - sh
+      - -c
+      - tail -f /var/log/app.log
+      volumeMounts:
+      - name: logs
+        mountPath: /var/log
+        readOnly: true
+    volumes:
+    - name: logs
+      emptyDir: {}
+  EOF
+
+  # 확인
+  kubectl logs multi-container-pod -c app
+  kubectl logs multi-container-pod -c log-collector
+  ```
+
+explanation: |
+  Multi-Container Pod 패턴 구현을 평가합니다.
+
+  3가지 패턴:
+  1. Sidecar: 메인 컨테이너 지원 (로그 수집, 프록시)
+  2. Ambassador: 외부 통신 대리 (프록시, 라우터)
+  3. Adapter: 출력 변환 (메트릭 포맷 변환)
+
+references:
+  - "https://kubernetes.io/docs/concepts/workloads/pods/#using-pods"

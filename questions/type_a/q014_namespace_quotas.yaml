@@ -1,0 +1,174 @@
+id: "A014"
+title: "ResourceQuota 및 LimitRange 설정"
+domain: "Cluster Architecture"
+difficulty: "medium"
+weight: 6
+time_estimate: 10
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  개발팀을 위한 네임스페이스에 리소스 제한을 설정해야 합니다.
+
+task: |
+  다음 작업을 수행하세요:
+
+  1. 네임스페이스 생성:
+     - 이름: dev-team
+
+  2. ResourceQuota 생성:
+     - 이름: dev-quota
+     - 최대 Pod: 10개
+     - 최대 CPU 요청: 4 cores
+     - 최대 메모리 요청: 8Gi
+
+  3. LimitRange 생성:
+     - 이름: dev-limits
+     - 컨테이너 기본 CPU 요청: 100m
+     - 컨테이너 기본 메모리 요청: 128Mi
+     - 컨테이너 최대 CPU: 500m
+     - 컨테이너 최대 메모리: 512Mi
+
+hints:
+  - "ResourceQuota는 네임스페이스 전체 제한"
+  - "LimitRange는 개별 리소스 기본값/제한"
+
+validation:
+  checks:
+    - resource: "namespace"
+      name: "dev-team"
+
+    - resource: "resourcequota"
+      name: "dev-quota"
+      namespace: "dev-team"
+
+    - resource: "limitrange"
+      name: "dev-limits"
+      namespace: "dev-team"
+
+solution: |
+  해결 방법:
+
+  ```bash
+  # 1. 네임스페이스 생성
+  kubectl create namespace dev-team
+
+  # 2. ResourceQuota 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: ResourceQuota
+  metadata:
+    name: dev-quota
+    namespace: dev-team
+  spec:
+    hard:
+      pods: "10"
+      requests.cpu: "4"
+      requests.memory: 8Gi
+  EOF
+
+  # 3. LimitRange 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: LimitRange
+  metadata:
+    name: dev-limits
+    namespace: dev-team
+  spec:
+    limits:
+    - default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      max:
+        cpu: 500m
+        memory: 512Mi
+      type: Container
+  EOF
+
+  # 확인
+  kubectl get resourcequota -n dev-team
+  kubectl describe resourcequota dev-quota -n dev-team
+  kubectl get limitrange -n dev-team
+  kubectl describe limitrange dev-limits -n dev-team
+
+  # 테스트: 리소스 명시 없이 Pod 생성
+  kubectl run test-pod --image=nginx -n dev-team
+  kubectl get pod test-pod -n dev-team -o yaml | grep -A 10 resources
+  # 기본값이 자동으로 적용됨
+  ```
+
+explanation: |
+  ResourceQuota와 LimitRange를 통한 리소스 관리를 평가합니다.
+
+  ResourceQuota:
+  - 네임스페이스별 총 리소스 제한
+  - 멀티테넌시 환경에 필수
+
+  제한 가능 항목:
+  1. 컴퓨팅 리소스:
+     - requests.cpu, limits.cpu
+     - requests.memory, limits.memory
+     - requests.storage
+
+  2. 오브젝트 수:
+     - pods, services
+     - configmaps, secrets
+     - persistentvolumeclaims
+
+  3. 확장 리소스:
+     - requests.nvidia.com/gpu
+
+  LimitRange:
+  - 개별 리소스의 기본값 및 제한
+  - Pod/Container별 적용
+
+  설정 항목:
+  1. default: 제한값 (limits)
+  2. defaultRequest: 요청값 (requests)
+  3. max: 최대값
+  4. min: 최소값
+  5. maxLimitRequestRatio: limit/request 비율
+
+  타입:
+  - Container: 컨테이너별
+  - Pod: Pod별
+  - PersistentVolumeClaim: PVC별
+
+  동작 방식:
+  1. ResourceQuota 없으면:
+     - 무제한 리소스 사용 가능
+
+  2. ResourceQuota 있고 LimitRange 없으면:
+     - Pod는 반드시 requests/limits 명시 필요
+
+  3. 둘 다 있으면:
+     - LimitRange가 기본값 제공
+     - Pod 생성 시 자동 적용
+
+  실무 적용:
+  - 팀/프로젝트별 네임스페이스 분리
+  - 각 네임스페이스에 quota 설정
+  - 공정한 리소스 분배
+  - 비용 관리
+
+  예제 시나리오:
+  ```yaml
+  # 개발 환경: 작은 할당
+  requests.cpu: "2"
+  requests.memory: 4Gi
+
+  # 스테이징: 중간 할당
+  requests.cpu: "4"
+  requests.memory: 8Gi
+
+  # 프로덕션: 큰 할당
+  requests.cpu: "16"
+  requests.memory: 32Gi
+  ```
+
+references:
+  - "https://kubernetes.io/docs/concepts/policy/resource-quotas/"
+  - "https://kubernetes.io/docs/concepts/policy/limit-range/"

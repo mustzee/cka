@@ -1,0 +1,113 @@
+id: "A011"
+title: "DaemonSet 생성 및 관리"
+domain: "Workloads & Scheduling"
+difficulty: "medium"
+weight: 5
+time_estimate: 8
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  모든 워커 노드에서 실행되어야 하는 모니터링 에이전트를 배포해야 합니다.
+
+task: |
+  다음 요구사항을 만족하는 DaemonSet을 생성하세요:
+
+  - 이름: node-monitor
+  - 네임스페이스: kube-system
+  - 이미지: busybox:latest
+  - 명령어: ["sh", "-c", "while true; do echo monitoring; sleep 30; done"]
+  - 레이블: app=node-monitor, type=monitoring
+  - 워커 노드에만 배포 (node-type=worker 레이블 사용)
+
+hints:
+  - "nodeSelector로 특정 노드 선택 가능"
+  - "DaemonSet은 각 노드당 1개 Pod만 실행"
+
+validation:
+  checks:
+    - resource: "daemonset"
+      name: "node-monitor"
+      namespace: "kube-system"
+
+solution: |
+  해결 방법:
+
+  ```bash
+  # DaemonSet 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: DaemonSet
+  metadata:
+    name: node-monitor
+    namespace: kube-system
+    labels:
+      app: node-monitor
+  spec:
+    selector:
+      matchLabels:
+        app: node-monitor
+    template:
+      metadata:
+        labels:
+          app: node-monitor
+          type: monitoring
+      spec:
+        nodeSelector:
+          node-type: worker
+        containers:
+        - name: monitor
+          image: busybox:latest
+          command:
+          - sh
+          - -c
+          - while true; do echo monitoring; sleep 30; done
+  EOF
+
+  # 확인
+  kubectl get daemonset -n kube-system
+  kubectl get pods -n kube-system -l app=node-monitor -o wide
+
+  # 각 워커 노드에 1개씩 Pod가 실행되는지 확인
+  kubectl get nodes -l node-type=worker
+  ```
+
+explanation: |
+  DaemonSet을 통한 노드별 Pod 배포를 평가합니다.
+
+  DaemonSet이란:
+  - 모든 (또는 일부) 노드에 Pod 복사본 실행
+  - 노드 추가 시 자동으로 Pod 추가
+  - 노드 제거 시 자동으로 Pod 삭제
+
+  사용 사례:
+  1. 노드 모니터링 (node-exporter, cAdvisor)
+  2. 로그 수집 (fluentd, logstash)
+  3. 네트워크 (CNI 플러그인)
+  4. 스토리지 (ceph, glusterfs)
+
+  vs Deployment:
+  - Deployment: 전체 클러스터에 N개 복제본
+  - DaemonSet: 각 노드에 1개씩
+
+  노드 선택:
+  1. nodeSelector: 간단한 레이블 매칭
+  2. affinity: 고급 규칙
+  3. tolerations: Taint 허용
+
+  업데이트 전략:
+  1. RollingUpdate (기본):
+     - 한 번에 하나씩 업데이트
+     - maxUnavailable 설정 가능
+
+  2. OnDelete:
+     - 수동 삭제 시에만 업데이트
+     - 제어된 업데이트 가능
+
+  실무 팁:
+  - 리소스 제한 설정 필수
+  - hostNetwork, hostPID 사용 가능
+  - 보안 고려 (특권 필요 시)
+
+references:
+  - "https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/"

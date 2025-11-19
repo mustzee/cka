@@ -1,0 +1,184 @@
+id: "A015"
+title: "Init Container를 사용한 초기화"
+domain: "Workloads & Scheduling"
+difficulty: "medium"
+weight: 5
+time_estimate: 8
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  애플리케이션 컨테이너가 시작되기 전에 초기화 작업을 수행해야 합니다.
+
+task: |
+  다음 요구사항을 만족하는 Pod를 생성하세요:
+
+  - 이름: app-with-init
+  - 네임스페이스: default
+
+  Init Container:
+  - 이름: init-setup
+  - 이미지: busybox:latest
+  - 명령어: ["sh", "-c", "echo Initialization complete > /work-dir/initialized.txt"]
+  - 볼륨 마운트: /work-dir (emptyDir)
+
+  Main Container:
+  - 이름: app
+  - 이미지: nginx:latest
+  - 볼륨 마운트: /usr/share/nginx/html (emptyDir)
+
+hints:
+  - "initContainers 필드 사용"
+  - "init container는 순차적으로 실행"
+  - "모든 init container 성공 후 main container 시작"
+
+validation:
+  checks:
+    - resource: "pod"
+      name: "app-with-init"
+      namespace: "default"
+      conditions:
+        - type: "Ready"
+          status: "True"
+
+solution: |
+  해결 방법:
+
+  ```bash
+  # Pod 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: app-with-init
+    namespace: default
+  spec:
+    initContainers:
+    - name: init-setup
+      image: busybox:latest
+      command:
+      - sh
+      - -c
+      - echo Initialization complete > /work-dir/initialized.txt
+      volumeMounts:
+      - name: workdir
+        mountPath: /work-dir
+    containers:
+    - name: app
+      image: nginx:latest
+      volumeMounts:
+      - name: workdir
+        mountPath: /usr/share/nginx/html
+    volumes:
+    - name: workdir
+      emptyDir: {}
+  EOF
+
+  # 확인
+  kubectl get pod app-with-init
+  kubectl describe pod app-with-init
+
+  # Init Container 로그 확인
+  kubectl logs app-with-init -c init-setup
+
+  # 파일 확인
+  kubectl exec app-with-init -- cat /usr/share/nginx/html/initialized.txt
+  ```
+
+explanation: |
+  Init Container를 사용한 초기화 작업을 평가합니다.
+
+  Init Container란:
+  - 메인 컨테이너 시작 전 실행
+  - 초기화, 설정, 준비 작업 수행
+  - 순차적으로 실행 (하나씩)
+  - 모두 성공해야 메인 컨테이너 시작
+
+  vs 메인 컨테이너:
+  1. 실행 시점:
+     - Init: Pod 시작 시 한 번
+     - Main: 계속 실행
+
+  2. 순서:
+     - Init: 순차적
+     - Main: 병렬
+
+  3. 재시작:
+     - Init: 실패 시 Pod 재시작
+     - Main: restartPolicy 따름
+
+  사용 사례:
+
+  1. 의존성 대기:
+  ```yaml
+  initContainers:
+  - name: wait-for-db
+    image: busybox
+    command:
+    - sh
+    - -c
+    - until nslookup db-service; do sleep 2; done
+  ```
+
+  2. 설정 파일 생성:
+  ```yaml
+  initContainers:
+  - name: config-generator
+    image: busybox
+    command:
+    - sh
+    - -c
+    - |
+      cat > /config/app.conf <<EOF
+      server_name=$(hostname)
+      EOF
+    volumeMounts:
+    - name: config
+      mountPath: /config
+  ```
+
+  3. 데이터 다운로드:
+  ```yaml
+  initContainers:
+  - name: download-data
+    image: curlimages/curl
+    command:
+    - sh
+    - -c
+    - curl -o /data/file.tar.gz https://example.com/file.tar.gz
+    volumeMounts:
+    - name: data
+      mountPath: /data
+  ```
+
+  4. 권한 설정:
+  ```yaml
+  initContainers:
+  - name: set-permissions
+    image: busybox
+    command:
+    - sh
+    - -c
+    - chmod 777 /data
+    volumeMounts:
+    - name: data
+      mountPath: /data
+  ```
+
+  실무 패턴:
+  - Git clone으로 코드 가져오기
+  - 데이터베이스 마이그레이션
+  - SSL 인증서 생성
+  - 환경 설정 검증
+
+  디버깅:
+  ```bash
+  # Init Container 상태 확인
+  kubectl get pod <pod-name> -o jsonpath='{.status.initContainerStatuses[*].state}'
+
+  # Init Container 로그
+  kubectl logs <pod-name> -c <init-container-name>
+  ```
+
+references:
+  - "https://kubernetes.io/docs/concepts/workloads/pods/init-containers/"
