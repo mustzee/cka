@@ -7,6 +7,7 @@ import os
 import sys
 import click
 import time
+import subprocess
 from datetime import datetime
 from rich.console import Console
 from rich.panel import Panel
@@ -408,7 +409,13 @@ class CKASimulator:
     is_flag=True,
     help="문제 목록만 표시하고 종료 (클러스터 불필요)",
 )
-def main(exam_type, practice, hints, hard, ultra, yes, list_only):
+@click.option(
+    "--reset",
+    "-r",
+    is_flag=True,
+    help="🔄 시험 환경 리셋 (모든 시험 관련 리소스 삭제)",
+)
+def main(exam_type, practice, hints, hard, ultra, yes, list_only, reset):
     """
     CKA 시험 시뮬레이터
 
@@ -417,6 +424,31 @@ def main(exam_type, practice, hints, hard, ultra, yes, list_only):
     try:
         # 결과 디렉토리 생성
         os.makedirs("results", exist_ok=True)
+        
+        # 리셋 모드
+        if reset:
+            console.print("[bold yellow]🔄 시험 환경 리셋을 시작합니다...[/bold yellow]\\n")
+            
+            try:
+                if not yes and not Confirm.ask("정말로 모든 시험 관련 리소스를 삭제하시겠습니까? (되돌릴 수 없습니다)"):
+                    console.print("[yellow]리셋이 취소되었습니다.[/yellow]")
+                    return
+            except EOFError:
+                console.print("[yellow]비대화형 모드: 자동으로 리셋을 진행합니다...[/yellow]")
+                
+            # 리셋 스크립트 실행
+            reset_script = os.path.join(os.path.dirname(__file__), "..", "scripts", "reset-exam.sh")
+            if os.path.exists(reset_script):
+                result = subprocess.run(["/bin/bash", reset_script], 
+                                        capture_output=True, text=True)
+                if result.returncode == 0:
+                    console.print("[bold green]✅ 시험 환경 리셋이 완료되었습니다![/bold green]")
+                    console.print("[dim]새로운 시험을 시작할 수 있습니다.[/dim]")
+                else:
+                    console.print(f"[bold red]❌ 리셋 실패:[/bold red] {result.stderr}")
+            else:
+                console.print("[bold red]❌ 리셋 스크립트를 찾을 수 없습니다.[/bold red]")
+            return
 
         # 모드 충돌 검사
         if ultra and hints:

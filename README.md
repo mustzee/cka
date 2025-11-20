@@ -39,6 +39,7 @@ CKA (Certified Kubernetes Administrator) 시험 준비를 위한 실전 중심 �
 - ✅ **힌트 모드**: 학습용 힌트 표시/숨김 선택 가능
 - ✅ **Hard 모드**: 힌트 완전 제거, 실전 난이도
 - ✅ **💀 Ultra 모드** (NEW! 🔥): Chaos Engineering + 무작위 장애 주입 + 실전 트러블슈팅
+- ✅ **🔄 시험 환경 리셋** (NEW! 🔥): 빠른 환경 초기화 (5-10초)
 - ✅ **31개 실전 문제**: CKA 도메인 비중에 맞춘 문제 구성 (고급 트러블슈팅 3개 포함)
 - ✅ **2시간 타이머**: 실제 시험과 동일한 시간 제한
 - ✅ **자동 채점 시스템**: 리소스 검증, 상태 확인, 필드 값 검증
@@ -151,7 +152,34 @@ kubectl config current-context
 # ⚠️ Context 전환을 잊으면 0점 처리!
 ```
 
-### 4. 결과 확인
+### 4. 시험 환경 리셋 (NEW! 🔄)
+
+시험을 다시 시작하고 싶을 때:
+
+```bash
+# 대화형 리셋 (확인 질문 있음)
+python3 simulator/main.py --reset
+
+# 자동 리셋 (확인 질문 생략)  
+python3 simulator/main.py --reset --yes
+
+# 또는 스크립트 직접 실행
+./scripts/reset-exam.sh
+```
+
+**리셋 대상:**
+- ✅ 모든 시험 관련 네임스페이스 (production, staging, dev-team 등)
+- ✅ 기본 네임스페이스의 시험 리소스
+- ✅ 클러스터 레벨 리소스 (PV, ClusterRole 등)
+- ✅ Node taints 제거  
+- ✅ 시험 결과 파일 정리
+
+**장점:**
+- ⚡ 빠른 정리 (5-10초)
+- 🛡️ 안전한 삭제 (시스템 리소스 보존)
+- 🚫 클러스터 재생성 불필요
+
+### 5. 결과 확인
 
 시험 완료 후 자동으로 생성되는 리포트:
 - `results/score_report.json` - 점수 리포트 (Context 오류 횟수 포함)
@@ -184,7 +212,8 @@ cka/
 │   ├── create-cluster.sh        # 단일 클러스터 (구버전)
 │   ├── create-multi-cluster.sh  # 멀티 클러스터 (NEW!)
 │   ├── create-cluster-k3d.sh   # k3d 단일 클러스터
-│   └── cleanup.sh
+│   ├── reset-exam.sh           # 시험 환경 리셋 (NEW!)
+│   └── cleanup.sh              # 전체 클러스터 삭제
 ├── docs/                # 문서
 │   ├── USAGE_GUIDE.md
 │   ├── TROUBLESHOOTING_M2.md   # M2 Mac 호환성 가이드
@@ -324,6 +353,18 @@ python3 simulator/main.py --list-only
 # 클러스터 없이도 문제 확인 가능
 ```
 
+### 시험 환경 리셋
+```bash
+# 대화형 리셋
+python3 simulator/main.py --reset
+
+# 자동 리셋 (확인 생략)
+python3 simulator/main.py --reset --yes
+
+# 리셋 + 새로운 시험 시작을 한 번에
+python3 simulator/main.py --reset --yes && python3 simulator/main.py --type A --ultra
+```
+
 ### 비대화형 모드
 ```bash
 python3 simulator/main.py --yes
@@ -344,9 +385,12 @@ python3 simulator/main.py --yes
 - [TROUBLESHOOTING_M2.md](docs/TROUBLESHOOTING_M2.md) 참조
 - k3d 사용 권장 (Kind보다 안정적)
 
-### 클러스터 문제
+### 시험 환경 문제
 ```bash
-# 클러스터 삭제 후 재생성
+# 시험 리소스만 정리 (권장)
+python3 simulator/main.py --reset --yes
+
+# 전체 클러스터 재생성 (문제 지속 시)
 k3d cluster delete cluster1 cluster2 cluster3 cluster4 cluster5 cluster6
 ./scripts/create-multi-cluster.sh
 ```
