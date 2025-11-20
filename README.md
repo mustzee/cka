@@ -7,7 +7,7 @@ CKA (Certified Kubernetes Administrator) 시험 준비를 위한 실전 중심 �
 ✅ **Kubernetes 학습 도구** - CKA 개념과 명령어를 실습으로 배웁니다
 ✅ **CKA 개념 학습용** - 31개의 실전 문제로 핵심 개념 마스터 (고급 트러블슈팅 3개 포함)
 ✅ **멀티 클러스터 환경** - 실제 CKA처럼 6개 클러스터 전환 연습
-✅ **💀 Ultra Mode** - Chaos Engineering으로 실전 장애 대응 연습 (NEW!)
+✅ **💀 Ultra Mode (CLI 전용)** - Chaos Engineering으로 실전 장애 대응 연습 (NEW!)
 ❌ **CKA 시험 최종 준비 도구 아님** - Killer.sh 같은 실전 시뮬레이터 권장
 
 ### 💡 CKA 합격 로드맵
@@ -38,7 +38,7 @@ CKA (Certified Kubernetes Administrator) 시험 준비를 위한 실전 중심 �
 - ✅ **멀티 클러스터 지원** (NEW! 🔥): 실제 CKA처럼 6개 클러스터 전환 연습
 - ✅ **힌트 모드**: 학습용 힌트 표시/숨김 선택 가능
 - ✅ **Hard 모드**: 힌트 완전 제거, 실전 난이도
-- ✅ **💀 Ultra 모드** (NEW! 🔥): Chaos Engineering + 무작위 장애 주입 + 실전 트러블슈팅
+- ✅ **💀 Ultra 모드 (CLI 전용)** (NEW! 🔥): Chaos Engineering + 무작위 장애 주입 + 실전 트러블슈팅
 - ✅ **🔄 시험 환경 리셋** (NEW! 🔥): 빠른 환경 초기화 (5-10초)
 - ✅ **31개 실전 문제**: CKA 도메인 비중에 맞춘 문제 구성 (고급 트러블슈팅 3개 포함)
 - ✅ **2시간 타이머**: 실제 시험과 동일한 시간 제한
@@ -116,7 +116,7 @@ python3 simulator/main.py --type A --hard
 # 실제 CKA처럼 연습
 ```
 
-#### 💀 Ultra 모드 (최고 난이도 - Chaos Engineering)
+#### 💀 Ultra 모드 (최고 난이도 - Chaos Engineering) - ⚠️ CLI 전용
 ```bash
 python3 simulator/main.py --type A --ultra
 
@@ -129,6 +129,9 @@ python3 simulator/main.py --type A --ultra
 # 힌트 완전 제거
 # 실전 트러블슈팅 능력 극한 테스트
 # Killer.sh 수준의 난이도
+
+# ⚠️ 주의: Ultra Mode는 CLI에서만 완전히 작동합니다
+#          웹 UI에서는 Chaos Engineering 기능이 작동하지 않습니다
 ```
 
 #### 연습 모드 (타이머 없음)
@@ -278,10 +281,11 @@ python3 simulator/main.py --type A --hard
 - 실제 CKA 시험과 가장 유사
 - 실전 준비 최종 단계
 
-### 4. 💀 Ultra 모드 (`--ultra`) - NEW!
+### 4. 💀 Ultra 모드 (`--ultra`) - NEW! - ⚠️ **CLI 전용**
 ```bash
 python3 simulator/main.py --type A --ultra
 ```
+- **⚠️ 중요: CLI에서만 완전히 작동** (웹 UI는 Chaos Engineering 미지원)
 - **Chaos Engineering 활성화**: 시험 중 무작위 장애 발생 (2-4회)
 - **실전 트러블슈팅**: 실제 장애 상황 대응 능력 평가
 - **장애 유형**:
@@ -293,6 +297,7 @@ python3 simulator/main.py --type A --ultra
 - **고난도 문제 포함**: Node 장애, CNI 문제, Control Plane 복구
 - **Killer.sh 수준**: 가장 실전에 가까운 연습
 - **권장 시점**: CKA 시험 1-2주 전, 기본기 완성 후
+- **필요 환경**: 실제 Kubernetes 클러스터 (k3d/kind 권장)
 
 ## 🚀 CKA 시험 준비 팁
 
@@ -378,6 +383,11 @@ python3 simulator/main.py --yes
 
 # 브라우저에서 http://localhost:8000/docs 접속
 ```
+
+**⚠️ 웹 UI 제한사항:**
+- Ultra Mode의 Chaos Engineering 기능은 웹 UI에서 작동하지 않습니다
+- 웹 UI는 문제 목록 표시 및 시험 관리 기능만 제공
+- **실전 트러블슈팅 연습은 CLI 모드를 사용하세요**
 
 ## 🐛 트러블슈팅
 
