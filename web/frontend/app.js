@@ -55,6 +55,12 @@ function selectType(type) {
 // 시험 시작
 async function startExam() {
     const practiceMode = document.getElementById('practiceModeCheckbox').checked;
+    const studyMode = document.querySelector('input[name="studyMode"]:checked').value;
+
+    // 학습 모드 플래그 설정
+    const showHints = studyMode === 'hints';
+    const hardMode = studyMode === 'hard';
+    const ultraMode = studyMode === 'ultra';
 
     showLoading(true);
 
@@ -66,9 +72,17 @@ async function startExam() {
             },
             body: JSON.stringify({
                 exam_type: selectedType,
-                practice_mode: practiceMode
+                practice_mode: practiceMode,
+                show_hints: showHints,
+                hard_mode: hardMode,
+                ultra_mode: ultraMode
             })
         });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || '시험 시작 실패');
+        }
 
         const data = await response.json();
         currentSession = data;

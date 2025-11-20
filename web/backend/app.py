@@ -50,12 +50,18 @@ grader = AutoGrader()
 class ExamStartRequest(BaseModel):
     exam_type: str = "A"
     practice_mode: bool = False
+    show_hints: bool = False
+    hard_mode: bool = False
+    ultra_mode: bool = False
 
 
 class ExamSession(BaseModel):
     session_id: str
     exam_type: str
     practice_mode: bool
+    show_hints: bool = False
+    hard_mode: bool = False
+    ultra_mode: bool = False
     questions: List[Dict[str, Any]]
     start_time: datetime
     end_time: Optional[datetime] = None
@@ -147,11 +153,31 @@ async def start_exam(request: ExamStartRequest):
         # 문제 로드
         questions = question_loader.load_questions(request.exam_type.upper())
 
+        # 모드 충돌 검사
+        if request.ultra_mode and request.show_hints:
+            raise HTTPException(
+                status_code=400,
+                detail="Ultra Mode와 힌트 모드는 동시에 사용할 수 없습니다"
+            )
+        if request.ultra_mode and request.hard_mode:
+            raise HTTPException(
+                status_code=400,
+                detail="Ultra Mode와 Hard Mode는 동시에 사용할 수 없습니다"
+            )
+        if request.hard_mode and request.show_hints:
+            raise HTTPException(
+                status_code=400,
+                detail="Hard Mode와 힌트 모드는 동시에 사용할 수 없습니다"
+            )
+
         # 세션 생성
         session = ExamSession(
             session_id=session_id,
             exam_type=request.exam_type.upper(),
             practice_mode=request.practice_mode,
+            show_hints=request.show_hints,
+            hard_mode=request.hard_mode,
+            ultra_mode=request.ultra_mode,
             questions=questions,
             start_time=datetime.now(),
         )
@@ -163,6 +189,9 @@ async def start_exam(request: ExamStartRequest):
             "session_id": session_id,
             "exam_type": session.exam_type,
             "practice_mode": session.practice_mode,
+            "show_hints": session.show_hints,
+            "hard_mode": session.hard_mode,
+            "ultra_mode": session.ultra_mode,
             "question_count": len(questions),
             "questions": questions,
             "start_time": session.start_time.isoformat(),
@@ -193,6 +222,9 @@ async def grade_exam(request: GradeRequest, background_tasks: BackgroundTasks):
                 "session_id": request.session_id,
                 "exam_type": session.exam_type,
                 "practice_mode": session.practice_mode,
+                "show_hints": session.show_hints,
+                "hard_mode": session.hard_mode,
+                "ultra_mode": session.ultra_mode,
                 "start_time": session.start_time,
                 "end_time": session.end_time,
                 "total_score": grade_result["total_score"],
