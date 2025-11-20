@@ -13,6 +13,7 @@ ENV/
 results/*.json
 results/*.md
 results/*.log
+results/*.db
 
 # Kubernetes
 kubeconfig
