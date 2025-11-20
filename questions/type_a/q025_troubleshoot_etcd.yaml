@@ -1,0 +1,295 @@
+id: "A025"
+title: "etcd 백업 및 복원"
+domain: "Troubleshooting"
+difficulty: "hard"
+weight: 8
+time_estimate: 15
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  클러스터의 etcd 데이터베이스를 백업하고 복원하는 작업이 필요합니다.
+  재해 복구 시나리오에 대비하여 etcd 스냅샷을 생성하고 복원해야 합니다.
+
+task: |
+  다음 작업을 수행하세요:
+
+  1. etcd 스냅샷을 생성하여 /tmp/etcd-backup.db에 저장하세요
+
+  2. etcd 정보:
+     - ETCD 엔드포인트: https://127.0.0.1:2379
+     - CA 인증서: /etc/kubernetes/pki/etcd/ca.crt
+     - 서버 인증서: /etc/kubernetes/pki/etcd/server.crt
+     - 서버 키: /etc/kubernetes/pki/etcd/server.key
+
+  3. 백업이 성공적으로 생성되었는지 확인하세요
+
+  4. (선택) 백업 복원 절차를 /tmp/restore-procedure.txt에 작성하세요
+
+hints:
+  - "etcdctl snapshot save 명령어 사용"
+  - "ETCDCTL_API=3 환경변수 설정"
+  - "인증서 경로 정확히 지정"
+  - "control-plane 노드에서 실행"
+
+validation:
+  checks:
+    - file: "/tmp/etcd-backup.db"
+      exists: true
+
+    - custom_check: |
+        # 백업 파일 크기 확인 (0보다 커야 함)
+        if [ -f /tmp/etcd-backup.db ] && [ -s /tmp/etcd-backup.db ]; then
+          echo "PASS"
+        else
+          echo "FAIL: Backup file is empty or does not exist"
+        fi
+
+solution: |
+  etcd 백업 및 복원:
+
+  ```bash
+  # 1. etcd 정보 확인
+  # Control-plane 노드에 접속
+  kubectl get pods -n kube-system | grep etcd
+
+  # etcd Pod 상세 정보 확인
+  kubectl describe pod etcd-<node-name> -n kube-system
+
+  # 2. etcdctl 버전 확인
+  ETCDCTL_API=3 etcdctl version
+
+  # etcdctl이 없다면 설치 (control-plane 노드에서)
+  # apt-get install etcd-client
+  # 또는 etcd Pod 내부에서 실행
+
+  # 3. etcd 스냅샷 생성
+  ETCDCTL_API=3 etcdctl snapshot save /tmp/etcd-backup.db \
+    --endpoints=https://127.0.0.1:2379 \
+    --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+    --cert=/etc/kubernetes/pki/etcd/server.crt \
+    --key=/etc/kubernetes/pki/etcd/server.key
+
+  # 출력 예시:
+  # {"level":"info","ts":...,"msg":"created temporary db file",...}
+  # {"level":"info","ts":...,"msg":"fetching snapshot",...}
+  # {"level":"info","ts":...,"msg":"fetched snapshot",...}
+  # Snapshot saved at /tmp/etcd-backup.db
+
+  # 4. 백업 검증
+  ETCDCTL_API=3 etcdctl snapshot status /tmp/etcd-backup.db \
+    --write-out=table
+
+  # 출력:
+  # +----------+----------+------------+------------+
+  # |   HASH   | REVISION | TOTAL KEYS | TOTAL SIZE |
+  # +----------+----------+------------+------------+
+  # | 12345678 |    12345 |       1234 |      5.2MB |
+  # +----------+----------+------------+------------+
+
+  # 5. 백업 파일 확인
+  ls -lh /tmp/etcd-backup.db
+  # -rw------- 1 root root 5.2M Nov 20 10:30 /tmp/etcd-backup.db
+
+  # 6. 복원 절차 문서화
+  cat > /tmp/restore-procedure.txt << 'EOF'
+  etcd 백업 복원 절차
+  ====================
+
+  1. 복원 전 준비:
+     - 모든 API 서버 중지
+     - etcd 데이터 디렉토리 백업
+
+  2. 스냅샷 복원:
+     ETCDCTL_API=3 etcdctl snapshot restore /tmp/etcd-backup.db \
+       --data-dir=/var/lib/etcd-restored \
+       --initial-cluster=<cluster-config> \
+       --initial-advertise-peer-urls=<peer-urls>
+
+  3. etcd 설정 업데이트:
+     - /etc/kubernetes/manifests/etcd.yaml 수정
+     - hostPath를 /var/lib/etcd-restored로 변경
+
+  4. etcd 재시작:
+     - Static Pod이므로 자동 재시작됨
+     - kubectl get pods -n kube-system -w로 확인
+
+  5. 클러스터 상태 확인:
+     - kubectl get nodes
+     - kubectl get pods --all-namespaces
+     - 복원된 리소스 확인
+
+  주의사항:
+  - 복원은 클러스터 전체 중단을 초래
+  - 프로덕션 환경에서는 신중히 수행
+  - 복원 전 현재 상태 백업 권장
+  EOF
+
+  cat /tmp/restore-procedure.txt
+
+  # 7. (추가) etcd Pod 내부에서 백업하기
+  # Control-plane 노드에서:
+  kubectl exec -n kube-system etcd-<node-name> -- \
+    etcdctl --endpoints=https://127.0.0.1:2379 \
+    --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+    --cert=/etc/kubernetes/pki/etcd/server.crt \
+    --key=/etc/kubernetes/pki/etcd/server.key \
+    snapshot save /tmp/etcd-backup.db
+
+  # Pod에서 호스트로 복사
+  kubectl cp kube-system/etcd-<node-name>:/tmp/etcd-backup.db /tmp/etcd-backup.db
+  ```
+
+  **실제 복원 예시** (시험에서는 복원까지 요구할 수 있음):
+
+  ```bash
+  # 1. 복원 수행
+  ETCDCTL_API=3 etcdctl snapshot restore /tmp/etcd-backup.db \
+    --data-dir=/var/lib/etcd-from-backup
+
+  # 2. etcd 설정 변경
+  sudo vim /etc/kubernetes/manifests/etcd.yaml
+
+  # volumes 섹션 수정:
+  # volumes:
+  # - hostPath:
+  #     path: /var/lib/etcd-from-backup  # 변경
+  #     type: DirectoryOrCreate
+  #   name: etcd-data
+
+  # 3. etcd Pod 자동 재시작 대기
+  kubectl get pods -n kube-system -w
+
+  # 4. 클러스터 확인
+  kubectl get nodes
+  kubectl get pods --all-namespaces
+  ```
+
+explanation: |
+  etcd 백업 및 복원을 평가합니다.
+
+  etcd란:
+  - Kubernetes의 모든 클러스터 데이터 저장
+  - 분산 키-값 저장소
+  - Control-plane 컴포넌트
+  - 고가용성 및 일관성 보장
+
+  저장되는 데이터:
+  - 모든 Kubernetes 리소스 (Pods, Services, ConfigMaps 등)
+  - 클러스터 구성 정보
+  - Secrets (암호화된 상태)
+  - RBAC 정책
+
+  etcdctl 명령어:
+
+  1. snapshot save:
+     - 현재 etcd 상태를 파일로 저장
+     - 클러스터 운영 중에도 가능
+     - 일관된 스냅샷 보장
+
+  2. snapshot status:
+     - 스냅샷 정보 확인
+     - 해시, 리비전, 키 개수, 크기
+
+  3. snapshot restore:
+     - 스냅샷에서 데이터 복원
+     - 새 데이터 디렉토리 생성
+     - 클러스터 중단 필요
+
+  인증서 파일:
+  ```
+  /etc/kubernetes/pki/etcd/
+  ├── ca.crt              # CA 인증서
+  ├── ca.key              # CA 키
+  ├── server.crt          # 서버 인증서
+  ├── server.key          # 서버 키
+  ├── peer.crt            # Peer 인증서
+  └── peer.key            # Peer 키
+  ```
+
+  환경변수:
+  - ETCDCTL_API=3: API 버전 3 사용 (필수)
+  - ETCDCTL_CACERT: CA 인증서
+  - ETCDCTL_CERT: 클라이언트 인증서
+  - ETCDCTL_KEY: 클라이언트 키
+  - ETCDCTL_ENDPOINTS: etcd 엔드포인트
+
+  백업 전략:
+
+  1. 정기 백업:
+     - Cron으로 자동화
+     - 일일/주간 백업
+     - 원격 저장소에 보관
+
+  2. 백업 스크립트:
+     ```bash
+     #!/bin/bash
+     DATE=$(date +%Y%m%d_%H%M%S)
+     BACKUP_DIR="/backup/etcd"
+     BACKUP_FILE="$BACKUP_DIR/etcd-$DATE.db"
+
+     mkdir -p $BACKUP_DIR
+
+     ETCDCTL_API=3 etcdctl snapshot save $BACKUP_FILE \
+       --endpoints=https://127.0.0.1:2379 \
+       --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+       --cert=/etc/kubernetes/pki/etcd/server.crt \
+       --key=/etc/kubernetes/pki/etcd/server.key
+
+     # 7일 이상 된 백업 삭제
+     find $BACKUP_DIR -name "etcd-*.db" -mtime +7 -delete
+     ```
+
+  3. 백업 보관:
+     - 로컬 + 원격 저장소
+     - S3, GCS, Azure Blob
+     - 암호화 권장
+
+  복원 시나리오:
+
+  1. 리소스 실수 삭제:
+     - 네임스페이스 전체 삭제
+     - 중요 ConfigMap/Secret 삭제
+     - 백업에서 복원
+
+  2. 클러스터 재해:
+     - Control-plane 노드 장애
+     - etcd 데이터 손실
+     - 새 클러스터에 복원
+
+  3. 마이그레이션:
+     - 클러스터 이전
+     - 버전 업그레이드 전 백업
+
+  주의사항:
+  - 복원은 클러스터를 백업 시점으로 되돌림
+  - 백업 후 생성된 모든 리소스 손실
+  - 프로덕션에서는 신중히 수행
+  - 복원 전 현재 상태 백업 권장
+
+  실무 팁:
+  - 정기적인 백업 자동화 (cron)
+  - 백업 테스트 정기 수행
+  - 복원 절차 문서화
+  - 백업 보관 정책 수립 (30일, 90일 등)
+  - 원격 저장소에 보관
+  - 암호화 고려
+
+  트러블슈팅:
+  ```bash
+  # 인증서 오류
+  # Error: context deadline exceeded
+  # → 인증서 경로 확인
+
+  # 권한 오류
+  # permission denied
+  # → root 또는 sudo로 실행
+
+  # etcdctl 없음
+  # command not found
+  # → etcd Pod 내부에서 실행 또는 설치
+  ```
+
+references:
+  - "https://kubernetes.io/docs/tasks/administer-cluster/configure-upgrade-etcd/"
+  - "https://etcd.io/docs/latest/op-guide/recovery/"

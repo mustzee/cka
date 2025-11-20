@@ -1,0 +1,373 @@
+id: "A026"
+title: "Pod 스케줄링 실패 트러블슈팅"
+domain: "Troubleshooting"
+difficulty: "medium"
+weight: 7
+time_estimate: 12
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  production 네임스페이스의 web-app Pod가 Pending 상태에서 스케줄링되지 않습니다.
+  Pod가 정상적으로 스케줄링되도록 문제를 진단하고 해결해야 합니다.
+
+task: |
+  다음 작업을 수행하세요:
+
+  1. web-app Pod의 스케줄링 실패 원인을 진단하세요
+
+  2. 문제를 해결하여 Pod가 Running 상태가 되도록 하세요
+
+  3. 진단 결과와 해결 방법을 /tmp/scheduling-fix.txt에 저장하세요
+     - 발견한 문제
+     - 근본 원인
+     - 적용한 해결책
+     - 검증 결과
+
+  참고: Pod는 이미 생성되어 있으며, 여러 가지 스케줄링 문제가 있을 수 있습니다.
+
+hints:
+  - "kubectl describe pod로 이벤트 확인"
+  - "스케줄러 메시지 확인: Insufficient resources, node selector, taints"
+  - "노드 상태 및 리소스 확인"
+  - "Pod 요구사항 vs 노드 가용성"
+
+validation:
+  checks:
+    - custom_check: |
+        # Pod가 Running 상태인지 확인
+        POD_STATUS=$(kubectl get pod web-app -n production -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
+        if [ "$POD_STATUS" = "Running" ]; then
+          echo "PASS"
+        else
+          echo "FAIL: Pod status is $POD_STATUS, expected Running"
+        fi
+
+    - file: "/tmp/scheduling-fix.txt"
+      exists: true
+
+solution: |
+  Pod 스케줄링 실패 트러블슈팅:
+
+  ```bash
+  # 1. Pod 상태 확인
+  kubectl get pod web-app -n production
+  # NAME      READY   STATUS    RESTARTS   AGE
+  # web-app   0/1     Pending   0          5m
+
+  # 2. 상세 정보 및 이벤트 확인 (가장 중요!)
+  kubectl describe pod web-app -n production
+
+  # Events 섹션에서 스케줄링 실패 원인 확인:
+  # - FailedScheduling: 0/3 nodes are available: 1 Insufficient cpu, 2 node(s) didn't match Pod's node affinity/selector
+  # - FailedScheduling: 0/3 nodes are available: 3 node(s) had taint {key=value}, that the pod didn't tolerate
+
+  # 3. 일반적인 스케줄링 실패 원인들:
+
+  # 원인 1: 리소스 부족 (Insufficient resources)
+  # 진단:
+  kubectl describe pod web-app -n production | grep -A 10 "Events:"
+  # FailedScheduling: Insufficient cpu/memory
+
+  kubectl describe nodes
+  # Allocated resources 섹션 확인
+
+  kubectl top nodes  # metrics-server 필요
+
+  # 해결:
+  # - Pod 리소스 요청 줄이기
+  kubectl edit pod web-app -n production
+  # resources.requests.cpu: 4 → 500m
+  # resources.requests.memory: 8Gi → 1Gi
+
+  # 또는 Pod 삭제 후 재생성
+  kubectl delete pod web-app -n production
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: web-app
+    namespace: production
+  spec:
+    containers:
+    - name: nginx
+      image: nginx:latest
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+  EOF
+
+  # 원인 2: NodeSelector 불일치
+  # 진단:
+  kubectl get pod web-app -n production -o yaml | grep -A 5 nodeSelector
+  # nodeSelector:
+  #   disktype: ssd
+
+  kubectl get nodes --show-labels | grep disktype
+  # 노드에 해당 레이블이 없음!
+
+  # 해결 방법 A: 노드에 레이블 추가
+  kubectl label nodes <node-name> disktype=ssd
+
+  # 해결 방법 B: Pod의 nodeSelector 제거
+  kubectl get pod web-app -n production -o yaml > /tmp/web-app.yaml
+  # nodeSelector 제거 후 재생성
+  kubectl delete pod web-app -n production
+  kubectl apply -f /tmp/web-app.yaml
+
+  # 원인 3: Taints/Tolerations 문제
+  # 진단:
+  kubectl describe nodes | grep -A 5 Taints
+  # Taints: node-role.kubernetes.io/master:NoSchedule
+
+  kubectl get pod web-app -n production -o yaml | grep -A 5 tolerations
+  # tolerations: []  # Toleration 없음!
+
+  # 해결: Pod에 Toleration 추가
+  kubectl get pod web-app -n production -o yaml > /tmp/web-app.yaml
+  # tolerations 추가 후 재생성:
+  # tolerations:
+  # - key: "node-role.kubernetes.io/master"
+  #   operator: "Exists"
+  #   effect: "NoSchedule"
+
+  kubectl delete pod web-app -n production
+  kubectl apply -f /tmp/web-app.yaml
+
+  # 원인 4: Node Affinity 불일치
+  # 진단:
+  kubectl get pod web-app -n production -o yaml | grep -A 10 affinity
+
+  # 해결: affinity 규칙 수정 또는 노드 레이블 추가
+
+  # 원인 5: PVC Pending 상태
+  # 진단:
+  kubectl get pvc -n production
+  kubectl describe pod web-app -n production
+  # Warning: FailedMount: persistentvolumeclaim "data" not found
+
+  # 해결: PVC 생성 또는 볼륨 제거
+
+  # 원인 6: 모든 노드가 Unschedulable
+  # 진단:
+  kubectl get nodes
+  # STATUS: Ready,SchedulingDisabled
+
+  # 해결:
+  kubectl uncordon <node-name>
+
+  # 4. Pod 상태 확인 (Running이 될 때까지 대기)
+  kubectl get pod web-app -n production -w
+
+  # 5. 최종 검증
+  kubectl get pod web-app -n production
+  kubectl describe pod web-app -n production
+
+  # 6. 결과 저장
+  cat > /tmp/scheduling-fix.txt << 'EOF'
+  Pod Scheduling Troubleshooting Report
+  =====================================
+
+  Pod: web-app (production namespace)
+
+  Problem Found:
+  - Pod was in Pending state due to scheduling failure
+  - Event: "0/3 nodes are available: 2 Insufficient cpu, 1 node(s) didn't match Pod's node affinity"
+
+  Root Cause:
+  1. Pod requested 4 CPU cores, but no node had sufficient available CPU
+  2. Pod had nodeSelector: disktype=ssd, but no node had this label
+
+  Solution Applied:
+  1. Reduced Pod CPU request from 4 cores to 500m
+  2. Added disktype=ssd label to worker-node-1
+     Command: kubectl label nodes worker-node-1 disktype=ssd
+
+  Verification:
+  - Pod Status: Running
+  - Scheduled Node: worker-node-1
+  - Container Status: Ready 1/1
+  - No error events in last 5 minutes
+
+  Commands Used:
+  1. kubectl describe pod web-app -n production
+  2. kubectl top nodes
+  3. kubectl get nodes --show-labels
+  4. kubectl label nodes worker-node-1 disktype=ssd
+  5. kubectl edit pod web-app -n production
+
+  Status: ✅ Resolved
+  EOF
+
+  cat /tmp/scheduling-fix.txt
+  ```
+
+explanation: |
+  Pod 스케줄링 실패 트러블슈팅을 평가합니다.
+
+  스케줄링 프로세스:
+  1. User가 Pod 생성 요청
+  2. API Server가 etcd에 저장
+  3. Scheduler가 적합한 Node 선택
+  4. Kubelet이 Pod 실행
+
+  스케줄링 실패 주요 원인:
+
+  1. **리소스 부족** (가장 흔함):
+     ```
+     Event: 0/3 nodes available: 3 Insufficient cpu
+     Event: 0/3 nodes available: 3 Insufficient memory
+     ```
+     - Pod requests > Node 가용 리소스
+     - 해결: requests 줄이기 또는 노드 추가
+
+  2. **NodeSelector 불일치**:
+     ```yaml
+     nodeSelector:
+       disktype: ssd
+       zone: us-west
+     ```
+     - Pod의 nodeSelector와 매칭되는 노드 없음
+     - 해결: 노드에 레이블 추가 또는 selector 수정
+
+  3. **Taints/Tolerations**:
+     ```
+     Node Taint: key=value:NoSchedule
+     Pod: No matching toleration
+     ```
+     - 노드에 taint가 있지만 Pod에 toleration 없음
+     - 해결: Pod에 toleration 추가
+
+  4. **Node Affinity**:
+     ```yaml
+     affinity:
+       nodeAffinity:
+         requiredDuringSchedulingIgnoredDuringExecution:
+           nodeSelectorTerms:
+           - matchExpressions:
+             - key: kubernetes.io/hostname
+               operator: In
+               values:
+               - specific-node
+     ```
+     - 조건을 만족하는 노드 없음
+     - 해결: affinity 규칙 완화 또는 노드 레이블 추가
+
+  5. **PVC 문제**:
+     ```
+     Event: persistentvolumeclaim "data-pvc" not found
+     Event: no persistent volumes available
+     ```
+     - Pod가 요구하는 PVC가 Pending 또는 없음
+     - 해결: PVC 생성 또는 PV 추가
+
+  6. **Unschedulable Node**:
+     ```bash
+     kubectl cordon <node>  # 스케줄링 비활성화
+     ```
+     - 노드가 SchedulingDisabled 상태
+     - 해결: kubectl uncordon <node>
+
+  7. **Pod Priority/Preemption**:
+     - 높은 우선순위 Pod가 리소스 차지
+     - 낮은 우선순위 Pod가 스케줄링 안 됨
+
+  진단 명령어:
+
+  ```bash
+  # 1. Pod 이벤트 확인 (가장 중요!)
+  kubectl describe pod <pod-name> -n <namespace>
+
+  # 2. 노드 리소스 확인
+  kubectl describe nodes
+  kubectl top nodes
+
+  # 3. 노드 레이블 확인
+  kubectl get nodes --show-labels
+
+  # 4. 노드 Taints 확인
+  kubectl describe nodes | grep Taints
+
+  # 5. PVC 상태 확인
+  kubectl get pvc -n <namespace>
+
+  # 6. 스케줄러 로그 확인
+  kubectl logs -n kube-system <scheduler-pod>
+
+  # 7. Pod 스펙 확인
+  kubectl get pod <pod-name> -n <namespace> -o yaml
+  ```
+
+  스케줄러 이벤트 메시지:
+
+  ```
+  # 리소스 부족
+  "0/3 nodes are available: 2 Insufficient cpu, 1 Insufficient memory"
+
+  # NodeSelector
+  "0/3 nodes are available: 3 node(s) didn't match Pod's node affinity/selector"
+
+  # Taints
+  "0/3 nodes are available: 3 node(s) had taint {key: value}, that the pod didn't tolerate"
+
+  # Unschedulable
+  "0/3 nodes are available: 3 node(s) were unschedulable"
+
+  # Volume
+  "pod has unbound immediate PersistentVolumeClaims"
+  ```
+
+  실무 패턴:
+
+  1. **우선순위 디버깅 순서**:
+     ```bash
+     kubectl describe pod  # 이벤트 확인
+     kubectl describe nodes  # 노드 상태
+     kubectl get nodes --show-labels  # 레이블
+     kubectl top nodes  # 리소스 사용량
+     ```
+
+  2. **빠른 수정**:
+     ```bash
+     # requests 제거 (테스트용)
+     kubectl patch pod <pod> -p '{"spec":{"containers":[{"name":"<container>","resources":{"requests":null}}]}}'
+
+     # nodeSelector 제거
+     kubectl patch pod <pod> -p '{"spec":{"nodeSelector":null}}'
+     ```
+
+  3. **노드 준비**:
+     ```bash
+     # 레이블 추가
+     kubectl label nodes <node> disktype=ssd
+
+     # Taint 제거
+     kubectl taint nodes <node> key=value:NoSchedule-
+
+     # Cordon 해제
+     kubectl uncordon <node>
+     ```
+
+  트러블슈팅 체크리스트:
+  - [ ] Pod describe 확인 (Events 섹션)
+  - [ ] 노드 리소스 가용성 확인
+  - [ ] NodeSelector 레이블 매칭 확인
+  - [ ] Taints/Tolerations 확인
+  - [ ] Node Affinity 규칙 확인
+  - [ ] PVC 상태 확인
+  - [ ] 노드 Schedulable 상태 확인
+
+  실무 팁:
+  - Events는 가장 중요한 정보원
+  - top 명령어로 실제 사용량 확인
+  - requests는 스케줄링 기준, limits는 실행 제한
+  - nodeSelector보다 affinity가 더 유연
+  - 프로덕션에서는 requests 설정 권장
+
+references:
+  - "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/"
+  - "https://kubernetes.io/docs/tasks/debug/debug-application/debug-pods/"

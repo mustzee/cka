@@ -1,0 +1,307 @@
+id: "A024"
+title: "StorageClass를 사용한 동적 볼륨 프로비저닝"
+domain: "Storage"
+difficulty: "medium"
+weight: 5
+time_estimate: 8
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  애플리케이션마다 다른 스토리지 성능 요구사항을 만족시켜야 합니다.
+  StorageClass를 사용하여 동적으로 볼륨을 프로비저닝해야 합니다.
+
+task: |
+  다음 작업을 수행하세요:
+
+  1. StorageClass 생성:
+     - 이름: fast-storage
+     - Provisioner: kubernetes.io/no-provisioner (로컬 테스트용)
+     - volumeBindingMode: WaitForFirstConsumer
+     - reclaimPolicy: Retain
+
+  2. PersistentVolumeClaim 생성:
+     - 이름: app-fast-pvc
+     - 네임스페이스: default
+     - StorageClass: fast-storage
+     - 크기: 500Mi
+     - 접근 모드: ReadWriteOnce
+
+  3. PersistentVolume 생성 (수동, no-provisioner이므로):
+     - 이름: local-pv-fast
+     - StorageClass: fast-storage
+     - 크기: 500Mi
+     - 접근 모드: ReadWriteOnce
+     - hostPath: /mnt/fast-storage
+
+  4. Pod 생성하여 PVC 사용:
+     - 이름: app-with-storage
+     - 네임스페이스: default
+     - 이미지: nginx:latest
+     - 볼륨 마운트: /data (app-fast-pvc 사용)
+
+hints:
+  - "StorageClass는 동적 프로비저닝 정책 정의"
+  - "WaitForFirstConsumer는 Pod 스케줄링 후 바인딩"
+  - "no-provisioner는 수동 PV 필요"
+  - "실제 환경에서는 AWS EBS, GCE PD 등 사용"
+
+validation:
+  checks:
+    - resource: "storageclass"
+      name: "fast-storage"
+
+    - resource: "persistentvolumeclaim"
+      name: "app-fast-pvc"
+      namespace: "default"
+
+    - resource: "persistentvolume"
+      name: "local-pv-fast"
+
+    - resource: "pod"
+      name: "app-with-storage"
+      namespace: "default"
+
+    - custom_check: |
+        # PVC가 Bound 상태인지 확인
+        PVC_STATUS=$(kubectl get pvc app-fast-pvc -n default -o jsonpath='{.status.phase}')
+        if [ "$PVC_STATUS" = "Bound" ]; then
+          echo "PASS"
+        else
+          echo "FAIL: PVC status is $PVC_STATUS, expected Bound"
+        fi
+
+solution: |
+  StorageClass와 동적 볼륨 프로비저닝:
+
+  ```bash
+  # 1. StorageClass 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: storage.k8s.io/v1
+  kind: StorageClass
+  metadata:
+    name: fast-storage
+  provisioner: kubernetes.io/no-provisioner
+  volumeBindingMode: WaitForFirstConsumer
+  reclaimPolicy: Retain
+  EOF
+
+  # 2. PersistentVolume 생성 (no-provisioner이므로 수동)
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: PersistentVolume
+  metadata:
+    name: local-pv-fast
+  spec:
+    capacity:
+      storage: 500Mi
+    accessModes:
+    - ReadWriteOnce
+    persistentVolumeReclaimPolicy: Retain
+    storageClassName: fast-storage
+    hostPath:
+      path: /mnt/fast-storage
+      type: DirectoryOrCreate
+  EOF
+
+  # 3. PersistentVolumeClaim 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: app-fast-pvc
+    namespace: default
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    storageClassName: fast-storage
+    resources:
+      requests:
+        storage: 500Mi
+  EOF
+
+  # 4. Pod 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: app-with-storage
+    namespace: default
+  spec:
+    containers:
+    - name: nginx
+      image: nginx:latest
+      volumeMounts:
+      - name: data
+        mountPath: /data
+    volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: app-fast-pvc
+  EOF
+
+  # 5. 확인
+  kubectl get storageclass fast-storage
+  kubectl get pv local-pv-fast
+  kubectl get pvc app-fast-pvc
+  kubectl get pod app-with-storage
+
+  # PVC 상태 확인 (Bound 여야 함)
+  kubectl describe pvc app-fast-pvc
+
+  # Pod에서 볼륨 사용 확인
+  kubectl exec app-with-storage -- df -h /data
+  kubectl exec app-with-storage -- touch /data/test.txt
+  kubectl exec app-with-storage -- ls -la /data
+
+  # 6. StorageClass 상세 정보
+  kubectl describe storageclass fast-storage
+  ```
+
+explanation: |
+  StorageClass를 사용한 동적 볼륨 프로비저닝을 평가합니다.
+
+  StorageClass란:
+  - 스토리지 "클래스" 정의
+  - 관리자가 다양한 스토리지 타입 제공
+  - 동적 프로비저닝 가능
+  - PVC가 자동으로 PV 생성 요청
+
+  주요 필드:
+
+  1. Provisioner:
+     - 볼륨 생성을 담당하는 플러그인
+     - 클라우드 제공자별 상이:
+       * AWS: ebs.csi.aws.com
+       * GCP: pd.csi.storage.gke.io
+       * Azure: disk.csi.azure.com
+       * 로컬: kubernetes.io/no-provisioner
+
+  2. volumeBindingMode:
+     - Immediate (기본값):
+       * PVC 생성 즉시 PV 바인딩
+       * Pod 스케줄링 전
+       * 존(Zone) 불일치 가능
+
+     - WaitForFirstConsumer:
+       * Pod 스케줄링 후 바인딩
+       * Pod와 같은 존에 볼륨 생성
+       * 권장 방식
+
+  3. reclaimPolicy:
+     - Delete (기본값):
+       * PVC 삭제 시 PV도 삭제
+       * 데이터 영구 손실
+
+     - Retain:
+       * PVC 삭제 시 PV 유지
+       * 수동 정리 필요
+       * 데이터 보호
+
+  4. allowVolumeExpansion:
+     - true: PVC 크기 증가 가능
+     - false: 크기 고정
+
+  동적 프로비저닝 흐름:
+  ```
+  1. StorageClass 생성 (관리자)
+  2. PVC 생성 → StorageClass 지정
+  3. Provisioner가 PV 자동 생성
+  4. PVC와 PV 자동 바인딩
+  5. Pod가 PVC 사용
+  ```
+
+  실제 클라우드 환경 예시:
+
+  AWS EBS StorageClass:
+  ```yaml
+  apiVersion: storage.k8s.io/v1
+  kind: StorageClass
+  metadata:
+    name: fast-ebs
+  provisioner: ebs.csi.aws.com
+  parameters:
+    type: gp3  # gp2, io1, io2
+    iopsPerGB: "10"
+    encrypted: "true"
+  volumeBindingMode: WaitForFirstConsumer
+  allowVolumeExpansion: true
+  ```
+
+  GCP Persistent Disk:
+  ```yaml
+  apiVersion: storage.k8s.io/v1
+  kind: StorageClass
+  metadata:
+    name: fast-pd
+  provisioner: pd.csi.storage.gke.io
+  parameters:
+    type: pd-ssd  # pd-standard, pd-balanced
+    replication-type: regional-pd
+  volumeBindingMode: WaitForFirstConsumer
+  ```
+
+  PVC에서 StorageClass 사용:
+  ```yaml
+  apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: my-pvc
+  spec:
+    storageClassName: fast-storage  # 지정
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 10Gi
+  ```
+
+  기본 StorageClass:
+  ```bash
+  # 기본 StorageClass 설정
+  kubectl patch storageclass fast-storage \
+    -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+
+  # 기본 StorageClass 확인
+  kubectl get storageclass
+  # NAME           PROVISIONER              ...
+  # fast-storage (default)  kubernetes.io/...
+
+  # PVC에서 storageClassName 생략 시 기본값 사용
+  ```
+
+  볼륨 확장:
+  ```yaml
+  # StorageClass에 allowVolumeExpansion: true 설정 필요
+  # PVC 수정
+  kubectl edit pvc app-fast-pvc
+  # spec.resources.requests.storage: 500Mi → 1Gi
+
+  # 확장 확인
+  kubectl get pvc app-fast-pvc -w
+  ```
+
+  트러블슈팅:
+  ```bash
+  # PVC가 Pending 상태
+  kubectl describe pvc <pvc-name>
+  # - StorageClass 없음
+  # - 적절한 PV 없음
+  # - Provisioner 오류
+
+  # 이벤트 확인
+  kubectl get events --sort-by='.lastTimestamp'
+
+  # StorageClass 목록
+  kubectl get storageclass
+  ```
+
+  실무 팁:
+  - 프로덕션: WaitForFirstConsumer + Retain
+  - 개발: Immediate + Delete
+  - 중요 데이터: reclaimPolicy: Retain
+  - 볼륨 확장 필요 시: allowVolumeExpansion: true
+
+references:
+  - "https://kubernetes.io/docs/concepts/storage/storage-classes/"
+  - "https://kubernetes.io/docs/concepts/storage/dynamic-provisioning/"
