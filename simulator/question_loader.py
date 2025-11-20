@@ -15,17 +15,24 @@ class QuestionLoader:
     def __init__(self, questions_dir: str = "questions"):
         self.questions_dir = questions_dir
 
-    def load_questions(self, exam_type: str = "A") -> List[Dict[str, Any]]:
+    def load_questions(self, exam_type: str = "A", set_number: int = 1) -> List[Dict[str, Any]]:
         """
         지정된 타입의 문제를 로드합니다.
 
         Args:
             exam_type: 시험 타입 (A, B, C)
+            set_number: 세트 번호 (1-5)
 
         Returns:
             문제 리스트
         """
+        # 세트별 디렉토리 확인
         type_dir = os.path.join(self.questions_dir, f"type_{exam_type.lower()}")
+        set_dir = os.path.join(type_dir, f"set{set_number}")
+
+        # 세트 디렉토리가 있으면 사용, 없으면 기본 디렉토리
+        if os.path.exists(set_dir):
+            type_dir = set_dir
 
         if not os.path.exists(type_dir):
             raise FileNotFoundError(f"문제 디렉토리를 찾을 수 없습니다: {type_dir}")
