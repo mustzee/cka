@@ -1,0 +1,475 @@
+id: A031
+title: Control Plane 장애 복구 (API Server Crash)
+domain: Troubleshooting
+difficulty: hard
+weight: 12
+time_estimate: 20
+context: cluster5
+description: |
+  Context: kubectl config use-context cluster5
+
+  cluster5의 API Server가 응답하지 않습니다.
+
+  모든 kubectl 명령어가 실패하고 있으며, 클러스터에 접근할 수 없는 상황입니다:
+  "The connection to the server <ip>:6443 was refused"
+
+  Control Plane 컴포넌트를 진단하고 복구하여 클러스터를 정상 상태로 되돌려야 합니다.
+
+task: |
+  다음 작업을 수행하세요:
+
+  1. Control Plane 장애를 진단하세요
+     - API Server 상태 확인
+     - Control Plane Pod 상태 확인
+     - 로그 분석
+
+  2. API Server를 복구하여 kubectl 명령어가 정상 동작하도록 하세요
+
+  3. 모든 Control Plane 컴포넌트가 정상 동작하는지 확인:
+     - kube-apiserver
+     - kube-controller-manager
+     - kube-scheduler
+     - etcd
+
+  4. 클러스터 정상 동작 테스트:
+     - kubectl get nodes (성공해야 함)
+     - kubectl get pods -A (성공해야 함)
+     - 새 Pod 생성 가능해야 함
+
+  5. 진단 및 복구 과정을 /tmp/controlplane-recovery.txt에 문서화:
+     - 초기 증상
+     - 진단 방법
+     - 발견한 문제
+     - 근본 원인
+     - 실행한 명령어
+     - 해결 과정
+     - 검증 결과
+
+hints:
+- Control Plane 노드에 직접 접속 필요
+- Static Pod 매니페스트 확인: /etc/kubernetes/manifests/
+- kubelet 로그 확인: journalctl -u kubelet
+- API Server 로그: /var/log/pods/ 또는 crictl logs
+- Static Pod는 kubelet이 직접 관리
+
+validation:
+  checks:
+  - custom_check: |
+      # kubectl이 정상 동작하는지 확인
+      if kubectl get nodes &> /dev/null; then
+        echo "PASS"
+      else
+        echo "FAIL: kubectl cannot connect to API server"
+      fi
+  - custom_check: |
+      # API Server Pod가 Running 상태인지 확인
+      API_STATUS=$(kubectl get pod -n kube-system -l component=kube-apiserver -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "NotFound")
+      if [ "$API_STATUS" = "Running" ]; then
+        echo "PASS"
+      else
+        echo "FAIL: API Server status is $API_STATUS"
+      fi
+  - custom_check: |
+      # 모든 Control Plane Pod가 Running 상태인지 확인
+      NOT_RUNNING=$(kubectl get pods -n kube-system -l tier=control-plane -o jsonpath='{.items[?(@.status.phase!="Running")].metadata.name}' 2>/dev/null | wc -w)
+      if [ "$NOT_RUNNING" -eq 0 ]; then
+        echo "PASS"
+      else
+        echo "FAIL: $NOT_RUNNING control plane pod(s) not running"
+      fi
+  - file: /tmp/controlplane-recovery.txt
+    exists: true
+
+solution: |
+  Control Plane 장애 복구:
+
+  ```bash
+  # 1. 증상 확인
+  kubectl get nodes
+  # The connection to the server <ip>:6443 was refused - did you specify the right host or port?
+
+  kubectl version
+  # 클라이언트는 동작하지만 서버 응답 없음
+
+  curl -k https://localhost:6443/healthz
+  # curl: (7) Failed to connect to localhost port 6443: Connection refused
+
+  # API Server가 완전히 다운된 상태!
+
+  # 2. Control Plane 노드 접속
+  # (실제 CKA 시험에서는 SSH 사용)
+  ssh control-plane
+
+  # 또는 이미 control-plane 노드라면 직접 진단
+
+  # 3. Control Plane Pod 상태 확인 (Docker/containerd 직접 사용)
+  # kubelet이 관리하는 Static Pod 확인
+
+  # crictl 사용 (Container Runtime Interface)
+  sudo crictl pods
+  # POD ID              CREATED              STATE      NAME                    NAMESPACE
+  # ...                 ...                  NotReady   kube-apiserver-...      kube-system
+
+  # API Server 컨테이너 확인
+  sudo crictl ps -a | grep apiserver
+  # CONTAINER ID  IMAGE    CREATED  STATE   NAME           POD ID
+  # abc123        ...      1h ago   Exited  kube-apiserver ...
+
+  # API Server가 Exited 상태!
+
+  # 4. API Server 로그 확인
+  # 방법 A: crictl logs
+  CONTAINER_ID=$(sudo crictl ps -a | grep apiserver | awk '{print $1}')
+  sudo crictl logs $CONTAINER_ID
+
+  # 방법 B: kubelet 로그
+  sudo journalctl -u kubelet -n 100 --no-pager | grep apiserver
+
+  # 방법 C: Pod 로그 파일
+  sudo ls /var/log/pods/ | grep apiserver
+  sudo cat /var/log/pods/kube-system_kube-apiserver-*/kube-apiserver/*.log
+
+  # 로그에서 오류 발견:
+  # Error: invalid argument "--etcd-servers=" for "--etcd-servers" flag: empty value
+  # 또는
+  # Error: unable to load server certificate: open /etc/kubernetes/pki/apiserver.crt: no such file or directory
+  # 또는
+  # panic: runtime error: invalid memory address
+
+  # 5. Static Pod 매니페스트 확인
+  sudo ls -la /etc/kubernetes/manifests/
+  # kube-apiserver.yaml
+  # kube-controller-manager.yaml
+  # kube-scheduler.yaml
+  # etcd.yaml
+
+  sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml
+
+  # 6. 일반적인 원인들
+
+  # 원인 A: 설정 파일 문법 오류
+  # YAML 문법 검증
+  sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml | sudo tee /tmp/apiserver-backup.yaml
+
+  # yamllint나 kubectl apply --dry-run으로 검증
+  # 문법 오류 수정 후:
+  sudo vim /etc/kubernetes/manifests/kube-apiserver.yaml
+
+  # kubelet이 자동으로 재시작 (30초 이내)
+
+  # 원인 B: 잘못된 플래그 값
+  # 예: --etcd-servers= (빈 값)
+  # 올바른 값으로 수정:
+  # --etcd-servers=https://127.0.0.1:2379
+
+  sudo vim /etc/kubernetes/manifests/kube-apiserver.yaml
+  # command 섹션에서 수정
+
+  # 원인 C: 인증서 문제
+  # 인증서 파일 확인
+  sudo ls -la /etc/kubernetes/pki/
+  # apiserver.crt
+  # apiserver.key
+  # ca.crt
+  # ...
+
+  # 인증서 누락 시 재생성 또는 복구 필요
+  # (백업에서 복원 또는 kubeadm으로 재생성)
+
+  # 원인 D: etcd 연결 실패
+  # etcd 상태 확인
+  sudo crictl ps | grep etcd
+
+  # etcd가 실행 중이 아니면 etcd 복구 필요
+  sudo vim /etc/kubernetes/manifests/etcd.yaml
+
+  # 원인 E: 포트 충돌
+  # 6443 포트가 이미 사용 중인지 확인
+  sudo netstat -tulpn | grep 6443
+  sudo lsof -i :6443
+
+  # 다른 프로세스가 6443 사용 시 종료
+
+  # 7. kubelet 재시작 (필요한 경우)
+  # Static Pod 변경 후 자동 재시작되지만, 필요 시:
+  sudo systemctl restart kubelet
+
+  # 8. API Server 복구 대기 (30초~2분)
+  # Control Plane Pod 상태 확인
+  watch "sudo crictl ps | grep -E 'apiserver|controller|scheduler|etcd'"
+
+  # 또는
+  watch "kubectl get pods -n kube-system 2>/dev/null"
+
+  # 9. API Server 연결 테스트
+  curl -k https://localhost:6443/healthz
+  # ok
+
+  kubectl get nodes
+  # 정상 응답!
+
+  # 10. 모든 Control Plane 컴포넌트 확인
+  kubectl get pods -n kube-system -l tier=control-plane
+
+  # NAME                                    READY   STATUS    RESTARTS
+  # etcd-control-plane                      1/1     Running   0
+  # kube-apiserver-control-plane            1/1     Running   0
+  # kube-controller-manager-control-plane   1/1     Running   0
+  # kube-scheduler-control-plane            1/1     Running   0
+
+  # 11. 클러스터 동작 테스트
+  kubectl get nodes
+  kubectl get pods -A
+
+  # 새 Pod 생성 테스트
+  kubectl run test --image=nginx --restart=Never
+  kubectl get pod test
+  kubectl delete pod test
+
+  # 12. 문서화
+  cat > /tmp/controlplane-recovery.txt << 'EOF'
+  Control Plane Recovery Report
+  ==============================
+
+  Initial Symptoms:
+  - All kubectl commands failing
+  - Error: "The connection to the server <ip>:6443 was refused"
+  - API Server not responding
+  - Cluster completely inaccessible
+
+  Diagnostic Method:
+  1. Attempted kubectl commands → connection refused
+  2. SSH'd to control-plane node
+  3. Checked crictl pods → kube-apiserver pod NotReady
+  4. Checked crictl ps → kube-apiserver container Exited
+  5. Reviewed container logs → found configuration error
+  6. Inspected /etc/kubernetes/manifests/kube-apiserver.yaml
+
+  Problem Found:
+  - Syntax error in kube-apiserver.yaml manifest
+  - Invalid YAML indentation in command section
+  - Caused API Server to crash on startup
+  - Kubelet unable to restart pod due to invalid manifest
+
+  Root Cause:
+  - Manual edit to API Server manifest introduced YAML syntax error
+  - Specifically: incorrect indentation in --etcd-servers flag
+  - kubelet detected error and refused to start pod
+
+  Commands Executed:
+  1. kubectl get nodes (failed - connection refused)
+  2. ssh control-plane
+  3. sudo crictl pods
+  4. sudo crictl ps -a | grep apiserver
+  5. sudo crictl logs <container-id>
+  6. sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml
+  7. sudo vim /etc/kubernetes/manifests/kube-apiserver.yaml (fixed syntax)
+  8. watch "sudo crictl ps | grep apiserver" (wait for restart)
+  9. curl -k https://localhost:6443/healthz
+  10. kubectl get nodes (verify recovery)
+  11. kubectl get pods -n kube-system
+
+  Solution Applied:
+  - Fixed YAML syntax error in /etc/kubernetes/manifests/kube-apiserver.yaml
+  - Corrected indentation for command flags
+  - Kubelet automatically restarted API Server pod (static pod)
+  - No manual restart required
+
+  Verification Results:
+  ✅ API Server pod: Running
+  ✅ kubectl get nodes: Success
+  ✅ kubectl get pods -A: Success
+  ✅ API Server healthz endpoint: ok
+  ✅ All control plane pods: Running
+  ✅ New pod creation: Success
+  ✅ Cluster fully operational
+
+  Additional Checks:
+  - etcd: Running and healthy
+  - kube-controller-manager: Running
+  - kube-scheduler: Running
+  - Node status: All Ready
+  - No error events in kube-system namespace
+
+  Prevention Measures:
+  - Always validate YAML syntax before editing manifests
+  - Use 'kubectl apply --dry-run' for validation
+  - Keep backup of working manifests
+  - Use version control for cluster configuration
+  - Implement change management process
+  - Set up monitoring and alerts for control plane health
+  - Test changes in non-production first
+
+  Recovery Time: ~5 minutes from diagnosis to full recovery
+
+  Status: ✅ Resolved
+  EOF
+
+  cat /tmp/controlplane-recovery.txt
+
+  # 13. (추가) 다른 Control Plane 문제들
+
+  # 문제 A: etcd 데이터 손상
+  # etcd 백업에서 복원
+  ETCDCTL_API=3 etcdctl snapshot restore /path/to/backup.db
+
+  # 문제 B: 인증서 만료
+  # 인증서 확인
+  sudo openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -dates
+  # 갱신
+  sudo kubeadm certs renew all
+
+  # 문제 C: 디스크 공간 부족
+  df -h
+  # /var 정리 필요
+
+  # 문제 D: 메모리 부족
+  free -h
+  # API Server OOM 발생
+  # 리소스 증설 필요
+
+  # 문제 E: Static Pod 매니페스트 삭제
+  # 백업에서 복원 또는 kubeadm으로 재생성
+  sudo kubeadm init phase control-plane apiserver
+
+  # 14. 실전 팁
+  # - Static Pod 변경 시 즉시 적용됨 (kubelet 감시)
+  # - 변경 전 항상 백업
+  # - YAML 문법 주의
+  # - 로그가 가장 중요한 정보원
+  ```
+
+explanation: |
+  Control Plane 트러블슈팅은 CKA 최고난도 주제입니다.
+
+  Control Plane 컴포넌트:
+
+  1. **kube-apiserver**:
+     - 모든 API 요청 처리
+     - etcd와 통신
+     - 인증/인가
+     - 포트: 6443
+
+  2. **kube-controller-manager**:
+     - ReplicaSet, Deployment 등 관리
+     - Node, Service 컨트롤러
+     - 지속적인 상태 조정
+
+  3. **kube-scheduler**:
+     - Pod 스케줄링
+     - 노드 선택
+     - 리소스 고려
+
+  4. **etcd**:
+     - 클러스터 상태 저장
+     - 키-값 저장소
+     - 백업 필수
+
+  Static Pod란:
+  - kubelet이 직접 관리하는 Pod
+  - API Server 없이도 실행 가능
+  - /etc/kubernetes/manifests/ 디렉토리 감시
+  - 파일 변경 시 자동 재시작
+
+  Control Plane 장애 주요 원인:
+
+  1. **설정 파일 오류** (가장 흔함):
+     - YAML 문법 오류
+     - 잘못된 플래그 값
+     - 필수 플래그 누락
+
+  2. **인증서 문제**:
+     - 인증서 만료
+     - 파일 누락
+     - 권한 문제
+
+  3. **etcd 연결 실패**:
+     - etcd 중지
+     - 잘못된 엔드포인트
+     - 인증서 오류
+
+  4. **리소스 부족**:
+     - 메모리 부족 (OOM)
+     - 디스크 공간 부족
+     - CPU 과부하
+
+  5. **포트 충돌**:
+     - 6443 포트 사용 중
+     - 2379 포트 충돌 (etcd)
+
+  진단 명령어:
+
+  ```bash
+  # kubectl 사용 불가 시 (Control Plane 노드에서)
+
+  # Container Runtime 직접 사용
+  sudo crictl pods  # Pod 목록
+  sudo crictl ps -a  # 컨테이너 목록
+  sudo crictl logs <container-id>  # 로그
+
+  # Static Pod 매니페스트
+  sudo ls -la /etc/kubernetes/manifests/
+  sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml
+
+  # kubelet 로그
+  sudo journalctl -u kubelet -n 100 --no-pager
+  sudo journalctl -u kubelet -f  # 실시간
+
+  # API Server 연결 테스트
+  curl -k https://localhost:6443/healthz
+
+  # 프로세스 확인
+  ps aux | grep kube-apiserver
+
+  # 포트 확인
+  sudo netstat -tulpn | grep 6443
+  sudo lsof -i :6443
+
+  # 인증서 확인
+  sudo ls -la /etc/kubernetes/pki/
+  sudo openssl x509 -in /etc/kubernetes/pki/apiserver.crt -noout -dates
+
+  # 디스크/메모리
+  df -h
+  free -h
+  ```
+
+  복구 절차:
+
+  1. **즉시 조치**:
+     - SSH로 Control Plane 노드 접속
+     - Static Pod 매니페스트 확인
+     - 로그 분석
+
+  2. **문제 수정**:
+     - YAML 파일 수정
+     - 인증서 복원
+     - 리소스 확보
+
+  3. **자동 재시작 대기**:
+     - kubelet이 자동으로 재시작 (30초~2분)
+     - 필요 시 수동 재시작: systemctl restart kubelet
+
+  4. **검증**:
+     - kubectl 명령어 테스트
+     - Control Plane Pod 상태 확인
+     - 클러스터 동작 확인
+
+  실무 팁:
+  - Control Plane 장애는 클러스터 전체 중단
+  - Static Pod는 kubelet이 자동 관리
+  - 변경 전 항상 백업
+  - YAML 문법 주의 (indentation!)
+  - 로그가 가장 중요한 정보원
+  - 실전에서는 시간 제약 심함 (빠른 진단 필요)
+
+  YAML 문법 주의사항:
+  - 들여쓰기는 2칸 스페이스
+  - 탭 사용 금지
+  - 리스트 항목: - (대시 + 스페이스)
+  - 콜론 뒤 스페이스 필수: key: value
+
+references:
+- https://kubernetes.io/docs/tasks/debug/debug-cluster/
+- https://kubernetes.io/docs/concepts/overview/components/
+- https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/troubleshooting-kubeadm/

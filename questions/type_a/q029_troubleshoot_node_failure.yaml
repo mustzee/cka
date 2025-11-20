@@ -1,0 +1,332 @@
+id: A029
+title: Node NotReady 상태 복구 및 워크로드 재개
+domain: Troubleshooting
+difficulty: hard
+weight: 10
+time_estimate: 15
+context: cluster3
+description: |
+  Context: kubectl config use-context cluster3
+
+  cluster3의 worker 노드 하나가 NotReady 상태입니다.
+
+  프로덕션 워크로드가 해당 노드에서 실행 중이었고, 현재 다른 노드로 재스케줄링되지 않고 있습니다.
+
+  노드 장애를 진단하고 복구하여 모든 워크로드가 정상 동작하도록 해야 합니다.
+
+task: |
+  다음 작업을 수행하세요:
+
+  1. NotReady 상태의 노드를 식별하고 근본 원인을 파악하세요
+
+  2. 노드를 Ready 상태로 복구하세요
+     - kubelet 상태 확인 및 복구
+     - 로그 분석
+     - 필요 시 컨테이너 런타임 재시작
+
+  3. 복구 과정을 /tmp/node-recovery-steps.txt에 문서화하세요:
+     - 발견한 문제
+     - 진단 과정
+     - 실행한 명령어
+     - 근본 원인
+     - 해결 방법
+
+  4. 모든 Pod가 정상적으로 Running 상태인지 확인하세요
+
+hints:
+- kubectl describe node로 노드 상태 확인
+- systemctl status kubelet으로 kubelet 확인
+- journalctl -u kubelet로 로그 확인
+- 컨테이너 런타임 상태 확인 (containerd/docker)
+
+validation:
+  checks:
+  - custom_check: |
+      # 모든 노드가 Ready 상태인지 확인
+      NOT_READY=$(kubectl get nodes --no-headers | grep -c NotReady || echo 0)
+      if [ "$NOT_READY" -eq 0 ]; then
+        echo "PASS"
+      else
+        echo "FAIL: $NOT_READY node(s) still NotReady"
+      fi
+  - file: /tmp/node-recovery-steps.txt
+    exists: true
+  - custom_check: |
+      # Pending Pod가 없는지 확인
+      PENDING=$(kubectl get pods -A --field-selector=status.phase=Pending --no-headers | wc -l)
+      if [ "$PENDING" -eq 0 ]; then
+        echo "PASS"
+      else
+        echo "FAIL: $PENDING pod(s) still Pending"
+      fi
+
+solution: |
+  Node NotReady 복구:
+
+  ```bash
+  # 1. 노드 상태 확인
+  kubectl get nodes
+  # NAME           STATUS     ROLES    AGE   VERSION
+  # control-plane  Ready      master   1d    v1.28.0
+  # worker-1       Ready      worker   1d    v1.28.0
+  # worker-2       NotReady   worker   1d    v1.28.0
+
+  # NotReady 노드 상세 정보
+  kubectl describe node worker-2
+
+  # Conditions 섹션 확인:
+  # Ready   False   ... KubeletNotReady   container runtime not ready: ...
+
+  # 2. SSH로 해당 노드 접속 (실제 CKA 시험에서)
+  ssh worker-2
+
+  # 3. kubelet 상태 확인
+  systemctl status kubelet
+  # ● kubelet.service - kubelet: The Kubernetes Node Agent
+  #    Loaded: loaded
+  #    Active: inactive (dead) since...
+
+  # kubelet이 중지되어 있음!
+
+  # 4. kubelet 로그 확인
+  journalctl -u kubelet -n 50 --no-pager
+
+  # 로그에서 원인 확인:
+  # - "failed to load kubelet config file"
+  # - "unable to load client CA file"
+  # - "error: unable to load bootstrap kubeconfig"
+  # - "Failed to start ContainerManager"
+
+  # 5. kubelet 시작
+  sudo systemctl start kubelet
+
+  # 6. 상태 재확인
+  systemctl status kubelet
+  # Active: active (running)
+
+  # 7. 노드가 Ready가 될 때까지 대기 (30초~1분)
+  watch kubectl get nodes
+
+  # 8. Control-plane에서 확인
+  kubectl get nodes
+  # worker-2가 Ready 상태로 변경됨
+
+  # 9. Pod 상태 확인
+  kubectl get pods -A -o wide | grep worker-2
+
+  # 10. 복구 문서화
+  cat > /tmp/node-recovery-steps.txt << 'EOF'
+  Node Recovery Report
+  ====================
+
+  Problem Identified:
+  - Node: worker-2
+  - Status: NotReady
+  - Symptom: Pods stuck in Pending state, not scheduling to other nodes
+
+  Diagnostic Process:
+  1. Ran 'kubectl get nodes' - identified worker-2 as NotReady
+  2. Ran 'kubectl describe node worker-2' - saw "KubeletNotReady" condition
+  3. SSH'd to worker-2
+  4. Checked kubelet status: systemctl status kubelet
+  5. Found kubelet service was stopped
+
+  Root Cause:
+  - kubelet service stopped unexpectedly
+  - Possible causes: system restart, manual stop, OOM killer, or crash
+
+  Commands Executed:
+  1. kubectl get nodes
+  2. kubectl describe node worker-2
+  3. ssh worker-2
+  4. systemctl status kubelet
+  5. journalctl -u kubelet -n 50
+  6. sudo systemctl start kubelet
+  7. systemctl status kubelet
+  8. kubectl get nodes (verify recovery)
+
+  Solution Applied:
+  - Restarted kubelet service: sudo systemctl start kubelet
+  - Verified kubelet is running and node became Ready
+  - Confirmed all pods resumed normal operation
+
+  Verification:
+  - All nodes: Ready
+  - No Pending pods
+  - kubelet service: active (running)
+  - Node Ready condition: True
+
+  Prevention:
+  - Enable kubelet service auto-restart: systemctl enable kubelet
+  - Monitor node health with readiness probes
+  - Set up alerts for node NotReady conditions
+  - Consider using Node Problem Detector
+
+  Status: ✅ Resolved
+  EOF
+
+  cat /tmp/node-recovery-steps.txt
+
+  # 11. (추가) 다른 일반적인 원인들
+
+  # 원인 A: 컨테이너 런타임 중지
+  sudo systemctl status containerd  # 또는 docker
+  sudo systemctl start containerd
+  sudo systemctl restart kubelet
+
+  # 원인 B: 디스크 공간 부족
+  df -h
+  # 디스크 정리 필요
+
+  # 원인 C: 네트워크 문제
+  ping <control-plane-ip>
+  # 네트워크 복구 필요
+
+  # 원인 D: 인증서 만료
+  openssl x509 -in /var/lib/kubelet/pki/kubelet-client-current.pem -noout -dates
+  # 인증서 갱신 필요
+
+  # 원인 E: CNI 플러그인 문제
+  ls /opt/cni/bin/
+  ls /etc/cni/net.d/
+  # CNI 재설치 필요
+  ```
+
+explanation: |
+  Node NotReady 트러블슈팅은 CKA에서 가장 중요한 스킬입니다.
+
+  Node NotReady 주요 원인:
+
+  1. **kubelet 중지** (가장 흔함):
+     - systemctl status kubelet 확인
+     - journalctl -u kubelet로 로그 분석
+     - systemctl start kubelet로 재시작
+
+  2. **컨테이너 런타임 중지**:
+     - containerd/docker 상태 확인
+     - systemctl status containerd
+     - systemctl restart containerd
+
+  3. **디스크 공간 부족**:
+     - df -h로 디스크 확인
+     - /var/log 정리
+     - /var/lib/containerd 정리
+     - 이미지 정리: docker system prune
+
+  4. **메모리 부족 (OOM)**:
+     - dmesg | grep -i oom
+     - kubelet이 OOM killer에 의해 종료
+     - 메모리 확보 필요
+
+  5. **네트워크 연결 끊김**:
+     - ping control-plane
+     - API server와 통신 불가
+     - 네트워크 설정 확인
+
+  6. **인증서 만료**:
+     - kubelet 인증서 확인
+     - /var/lib/kubelet/pki/ 확인
+     - 인증서 갱신 필요
+
+  7. **CNI 플러그인 문제**:
+     - /opt/cni/bin/ 확인
+     - /etc/cni/net.d/ 확인
+     - CNI 로그 확인
+
+  진단 명령어:
+
+  ```bash
+  # 노드 정보
+  kubectl get nodes
+  kubectl describe node <node-name>
+
+  # 노드 조건 확인
+  kubectl get node <node-name> -o jsonpath='{.status.conditions[?(@.type=="Ready")]}'
+
+  # 노드 이벤트
+  kubectl get events --field-selector involvedObject.name=<node-name>
+
+  # SSH 접속 후 (실제 CKA 환경)
+  ssh <node-name>
+
+  # kubelet 확인
+  systemctl status kubelet
+  journalctl -u kubelet -n 100 --no-pager
+  journalctl -u kubelet -f  # 실시간 로그
+
+  # 컨테이너 런타임 확인
+  systemctl status containerd
+  crictl ps  # 컨테이너 목록
+  crictl pods  # Pod 목록
+
+  # 시스템 리소스
+  df -h  # 디스크
+  free -h  # 메모리
+  top  # CPU/메모리 사용량
+  dmesg | grep -i oom  # OOM 확인
+
+  # 네트워크
+  ping <control-plane-ip>
+  nc -zv <control-plane-ip> 6443  # API server 연결
+
+  # 인증서
+  ls -la /var/lib/kubelet/pki/
+  openssl x509 -in /var/lib/kubelet/pki/kubelet-client-current.pem -noout -dates
+
+  # CNI
+  ls /opt/cni/bin/
+  ls /etc/cni/net.d/
+  ```
+
+  Node Conditions:
+
+  ```yaml
+  conditions:
+  - type: Ready
+    status: "False"  # NotReady
+    reason: KubeletNotReady
+    message: "container runtime not ready"
+
+  - type: MemoryPressure
+    status: "True"  # 메모리 부족
+    reason: KubeletHasInsufficientMemory
+
+  - type: DiskPressure
+    status: "True"  # 디스크 부족
+    reason: KubeletHasDiskPressure
+
+  - type: PIDPressure
+    status: "True"  # 프로세스 부족
+    reason: KubeletHasSufficientPID
+
+  - type: NetworkUnavailable
+    status: "True"  # 네트워크 문제
+    reason: RouteCreated
+  ```
+
+  복구 절차:
+
+  1. **즉시 조치**:
+     - kubelet 재시작: systemctl restart kubelet
+     - 컨테이너 런타임 재시작: systemctl restart containerd
+
+  2. **근본 원인 파악**:
+     - 로그 분석: journalctl -u kubelet
+     - 시스템 리소스 확인
+     - 네트워크 확인
+
+  3. **영구 수정**:
+     - 자동 재시작 설정: systemctl enable kubelet
+     - 리소스 모니터링 설정
+     - 알람 설정
+
+  실무 팁:
+  - Node NotReady는 즉시 조치 필요 (프로덕션 영향)
+  - kubelet 로그가 가장 중요한 정보원
+  - 복구 후 근본 원인 파악 필수
+  - 모니터링 시스템 구축 권장
+  - Node Problem Detector 사용 고려
+
+references:
+- https://kubernetes.io/docs/tasks/debug/debug-cluster/
+- https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/

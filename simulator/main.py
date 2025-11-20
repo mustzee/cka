@@ -18,6 +18,7 @@ from question_loader import QuestionLoader
 from timer import ExamTimer
 from grader import AutoGrader
 from report_generator import ReportGenerator
+from chaos_engineer import ChaosEngineering
 
 
 console = Console()
@@ -26,15 +27,17 @@ console = Console()
 class CKASimulator:
     """CKA 시험 시뮬레이터"""
 
-    def __init__(self, exam_type: str = "A", practice_mode: bool = False, show_hints: bool = False, hard_mode: bool = False):
+    def __init__(self, exam_type: str = "A", practice_mode: bool = False, show_hints: bool = False, hard_mode: bool = False, ultra_mode: bool = False):
         self.exam_type = exam_type.upper()
         self.practice_mode = practice_mode
         self.show_hints = show_hints  # 힌트 표시 여부
         self.hard_mode = hard_mode  # 실전 모드 (힌트 완전 제거)
+        self.ultra_mode = ultra_mode  # 🔥 Ultra 모드 (Chaos Engineering + 실전 난이도)
         self.loader = QuestionLoader()
         self.grader = AutoGrader()
         self.reporter = ReportGenerator()
         self.timer = ExamTimer(duration_minutes=120 if not practice_mode else 999999)
+        self.chaos = ChaosEngineering(enabled=ultra_mode)  # Chaos Engineering
         self.questions = []
         self.current_question_idx = 0
         self.auto_yes = False  # 자동 확인 모드
@@ -43,7 +46,9 @@ class CKASimulator:
     def show_welcome(self):
         """환영 메시지 표시"""
         mode_description = '연습 모드 (타이머 없음)' if self.practice_mode else '실전 모드 (2시간)'
-        if self.hard_mode:
+        if self.ultra_mode:
+            mode_description += ' - 💀 ULTRA MODE (Chaos Engineering + 무작위 장애 + 힌트 없음)'
+        elif self.hard_mode:
             mode_description += ' - 🔥 HARD MODE (힌트 없음, 실전 난이도)'
         elif self.show_hints:
             mode_description += ' - 💡 힌트 표시 모드'
@@ -146,7 +151,7 @@ class CKASimulator:
         console.print(question.get("task", ""))
 
         # 힌트 표시 로직
-        if not self.hard_mode and "hints" in question and question["hints"]:
+        if not self.hard_mode and not self.ultra_mode and "hints" in question and question["hints"]:
             if self.show_hints:
                 # --hints 플래그가 있으면 힌트 표시
                 console.print(f"\n[bold green]💡 힌트:[/bold green]")
@@ -237,6 +242,10 @@ class CKASimulator:
         self.timer.start()
         start_time = datetime.now()
 
+        # Chaos Engineering 시작 (Ultra Mode)
+        if self.ultra_mode:
+            self.chaos.inject_random_failures(duration_minutes=120)
+
         console.print("[bold green]시험이 시작되었습니다![/bold green]\n")
 
         # 문제 진행
@@ -247,8 +256,8 @@ class CKASimulator:
 
             question = self.questions[self.current_question_idx]
 
-            # Context 확인 (실전 모드나 hard 모드에서)
-            if not self.practice_mode or self.hard_mode:
+            # Context 확인 (실전 모드나 hard/ultra 모드에서)
+            if not self.practice_mode or self.hard_mode or self.ultra_mode:
                 self.check_context(question)
 
             self.show_question(question)
@@ -303,6 +312,11 @@ class CKASimulator:
                     console.print("[yellow]시험이 중단되었습니다.[/yellow]")
                     return
 
+        # Chaos Engineering 정리 (Ultra Mode)
+        if self.ultra_mode:
+            console.print("\n[yellow]Chaos Engineering 리소스 정리 중...[/yellow]")
+            self.chaos.cleanup()
+
         # 채점
         console.print("\n[bold cyan]채점 중...[/bold cyan]\n")
 
@@ -324,8 +338,10 @@ class CKASimulator:
             "type": self.exam_type,
             "practice_mode": self.practice_mode,
             "hard_mode": self.hard_mode,
+            "ultra_mode": self.ultra_mode,
             "show_hints": self.show_hints,
             "context_errors": self.context_errors,
+            "chaos_report": self.chaos.get_failure_report() if self.ultra_mode else None,
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
             "elapsed_time": elapsed_str,
@@ -376,6 +392,11 @@ class CKASimulator:
     help="🔥 HARD MODE (힌트 완전 제거, 실전 난이도)",
 )
 @click.option(
+    "--ultra",
+    is_flag=True,
+    help="💀 ULTRA MODE (Chaos Engineering + 무작위 장애 + 힌트 없음 + 실전 난이도)",
+)
+@click.option(
     "--yes",
     "-y",
     is_flag=True,
@@ -387,7 +408,7 @@ class CKASimulator:
     is_flag=True,
     help="문제 목록만 표시하고 종료 (클러스터 불필요)",
 )
-def main(exam_type, practice, hints, hard, yes, list_only):
+def main(exam_type, practice, hints, hard, ultra, yes, list_only):
     """
     CKA 시험 시뮬레이터
 
@@ -397,7 +418,18 @@ def main(exam_type, practice, hints, hard, yes, list_only):
         # 결과 디렉토리 생성
         os.makedirs("results", exist_ok=True)
 
-        # hard 모드와 hints 모드는 동시에 사용 불가
+        # 모드 충돌 검사
+        if ultra and hints:
+            console.print("[bold red]❌ --ultra와 --hints는 동시에 사용할 수 없습니다.[/bold red]")
+            console.print("[yellow]--ultra: Ultra Mode (Chaos Engineering + 힌트 없음)[/yellow]")
+            console.print("[yellow]--hints: 힌트 표시 (학습 모드)[/yellow]")
+            sys.exit(1)
+
+        if ultra and hard:
+            console.print("[bold red]❌ --ultra와 --hard는 동시에 사용할 수 없습니다.[/bold red]")
+            console.print("[yellow]--ultra는 hard 모드를 포함합니다 (더 어려움)[/yellow]")
+            sys.exit(1)
+
         if hard and hints:
             console.print("[bold red]❌ --hard와 --hints는 동시에 사용할 수 없습니다.[/bold red]")
             console.print("[yellow]--hard: 힌트 완전 제거 (실전 모드)[/yellow]")
@@ -409,7 +441,8 @@ def main(exam_type, practice, hints, hard, yes, list_only):
             exam_type=exam_type,
             practice_mode=practice,
             show_hints=hints,
-            hard_mode=hard
+            hard_mode=hard,
+            ultra_mode=ultra
         )
         simulator.auto_yes = yes  # 자동 확인 모드 설정
 

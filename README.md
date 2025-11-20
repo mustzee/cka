@@ -5,8 +5,9 @@ CKA (Certified Kubernetes Administrator) 시험 준비를 위한 실전 중심 �
 ## ⚠️ 이 프로젝트는 무엇인가요?
 
 ✅ **Kubernetes 학습 도구** - CKA 개념과 명령어를 실습으로 배웁니다
-✅ **CKA 개념 학습용** - 28개의 실전 문제로 핵심 개념 마스터
+✅ **CKA 개념 학습용** - 31개의 실전 문제로 핵심 개념 마스터 (고급 트러블슈팅 3개 포함)
 ✅ **멀티 클러스터 환경** - 실제 CKA처럼 6개 클러스터 전환 연습
+✅ **💀 Ultra Mode** - Chaos Engineering으로 실전 장애 대응 연습 (NEW!)
 ❌ **CKA 시험 최종 준비 도구 아님** - Killer.sh 같은 실전 시뮬레이터 권장
 
 ### 💡 CKA 합격 로드맵
@@ -21,6 +22,11 @@ CKA (Certified Kubernetes Administrator) 시험 준비를 위한 실전 중심 �
                 - 체계적인 커리큘럼
                 - 상세한 실습 랩
 
+2.5단계 (시험 2주 전) ► 💀 Ultra Mode 도전! (NEW!)
+                        - Chaos Engineering으로 실전 대비
+                        - 무작위 장애 대응 능력 향상
+                        - 고급 트러블슈팅 마스터
+
 3단계 (시험 1주일 전) ► Killer.sh 최종 점검 ($36)
                       - 실제 시험과 99% 동일한 환경
                       - 최종 실력 검증
@@ -32,7 +38,8 @@ CKA (Certified Kubernetes Administrator) 시험 준비를 위한 실전 중심 �
 - ✅ **멀티 클러스터 지원** (NEW! 🔥): 실제 CKA처럼 6개 클러스터 전환 연습
 - ✅ **힌트 모드**: 학습용 힌트 표시/숨김 선택 가능
 - ✅ **Hard 모드**: 힌트 완전 제거, 실전 난이도
-- ✅ **28개 실전 문제**: CKA 도메인 비중에 맞춘 문제 구성
+- ✅ **💀 Ultra 모드** (NEW! 🔥): Chaos Engineering + 무작위 장애 주입 + 실전 트러블슈팅
+- ✅ **31개 실전 문제**: CKA 도메인 비중에 맞춘 문제 구성 (고급 트러블슈팅 3개 포함)
 - ✅ **2시간 타이머**: 실제 시험과 동일한 시간 제한
 - ✅ **자동 채점 시스템**: 리소스 검증, 상태 확인, 필드 값 검증
 - ✅ **Context 검증**: 올바른 클러스터에서 작업했는지 확인
@@ -108,6 +115,21 @@ python3 simulator/main.py --type A --hard
 # 실제 CKA처럼 연습
 ```
 
+#### 💀 Ultra 모드 (최고 난이도 - Chaos Engineering)
+```bash
+python3 simulator/main.py --type A --ultra
+
+# 🔥 Chaos Engineering 활성화
+# 시험 중 무작위 장애 발생 (2-4회)
+#   - 노드 리소스 압박 (메모리 부족)
+#   - 무작위 Pod 삭제
+#   - DNS 장애 (CoreDNS 재시작)
+#   - 네트워크 지연
+# 힌트 완전 제거
+# 실전 트러블슈팅 능력 극한 테스트
+# Killer.sh 수준의 난이도
+```
+
 #### 연습 모드 (타이머 없음)
 ```bash
 python3 simulator/main.py --practice
@@ -170,7 +192,7 @@ cka/
 └── results/             # 시험 결과 저장
 ```
 
-## 📚 문제 구성 (Type A - 28문제)
+## 📚 문제 구성 (Type A - 31문제)
 
 ### 도메인별 비중
 
@@ -183,17 +205,22 @@ cka/
 | **Services & Networking** | 11.5% | 20% | ⚠️ 약간 부족 |
 
 ### 문제 난이도 분포
-- Easy: 7문제 (25%)
-- Medium: 14문제 (50%)
-- Hard: 7문제 (25%)
+- Easy: 7문제 (23%)
+- Medium: 14문제 (45%)
+- Hard: 10문제 (32%) - **3개 고급 트러블슈팅 문제 추가!**
 
 ### 멀티 클러스터 분포
 - cluster1: 5문제
 - cluster2: 5문제
-- cluster3: 5문제
-- cluster4: 6문제
-- cluster5: 4문제
+- cluster3: 6문제 - **Node 장애 복구 추가**
+- cluster4: 7문제 - **CNI 네트워크 트러블슈팅 추가**
+- cluster5: 5문제 - **Control Plane 장애 복구 추가**
 - cluster6: 3문제
+
+### 🔥 신규 고급 트러블슈팅 문제 (Ultra Mode용)
+1. **A029**: Node NotReady 상태 복구 (Hard, 10점)
+2. **A030**: CNI 네트워크 플러그인 장애 (Hard, 10점)
+3. **A031**: Control Plane 장애 복구 (Hard, 12점)
 
 ## 🎓 학습 모드 설명
 
@@ -222,6 +249,22 @@ python3 simulator/main.py --type A --hard
 - 실제 CKA 시험과 가장 유사
 - 실전 준비 최종 단계
 
+### 4. 💀 Ultra 모드 (`--ultra`) - NEW!
+```bash
+python3 simulator/main.py --type A --ultra
+```
+- **Chaos Engineering 활성화**: 시험 중 무작위 장애 발생 (2-4회)
+- **실전 트러블슈팅**: 실제 장애 상황 대응 능력 평가
+- **장애 유형**:
+  - 노드 리소스 압박 (메모리 부족)
+  - 무작위 Pod 강제 삭제
+  - DNS 서비스 장애 (CoreDNS 재시작)
+  - 네트워크 지연 주입
+- **힌트 완전 제거**
+- **고난도 문제 포함**: Node 장애, CNI 문제, Control Plane 복구
+- **Killer.sh 수준**: 가장 실전에 가까운 연습
+- **권장 시점**: CKA 시험 1-2주 전, 기본기 완성 후
+
 ## 🚀 CKA 시험 준비 팁
 
 ### 이 시뮬레이터로 할 것:
@@ -230,6 +273,7 @@ python3 simulator/main.py --type A --hard
 3. ✅ 멀티 클러스터 전환에 익숙해지기
 4. ✅ 시간 관리 연습 (2시간 안에 모든 문제 풀기)
 5. ✅ 자주 쓰는 명령어 패턴 암기
+6. ✅ **Ultra Mode로 실전 트러블슈팅 연습** (시험 1-2주 전)
 
 ### 실제 시험 전 반드시 할 것:
 1. 🔥 **Killer.sh 구매** ($36) - 시험 1주일 전
