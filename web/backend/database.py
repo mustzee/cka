@@ -30,6 +30,9 @@ class ExamSessionModel(Base):
     session_id = Column(String, unique=True, index=True)
     exam_type = Column(String)
     practice_mode = Column(Boolean, default=False)
+    show_hints = Column(Boolean, default=False)
+    hard_mode = Column(Boolean, default=False)
+    ultra_mode = Column(Boolean, default=False)
     start_time = Column(DateTime)
     end_time = Column(DateTime, nullable=True)
     total_score = Column(Float)
@@ -67,6 +70,9 @@ def save_exam_session(session_data: dict):
             session_id=session_data["session_id"],
             exam_type=session_data["exam_type"],
             practice_mode=session_data.get("practice_mode", False),
+            show_hints=session_data.get("show_hints", False),
+            hard_mode=session_data.get("hard_mode", False),
+            ultra_mode=session_data.get("ultra_mode", False),
             start_time=session_data["start_time"],
             end_time=session_data.get("end_time"),
             total_score=session_data["total_score"],

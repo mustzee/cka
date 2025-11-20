@@ -276,10 +276,36 @@
 
                 <div class="card">
                     <h2>옵션</h2>
-                    <label>
-                        <input type="checkbox" id="practiceModeCheckbox">
-                        연습 모드 (타이머 없음)
-                    </label>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 10px;">
+                            <input type="checkbox" id="practiceModeCheckbox">
+                            연습 모드 (타이머 없음)
+                        </label>
+                    </div>
+
+                    <h3 style="color: #667eea; margin: 20px 0 10px 0;">학습 모드</h3>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 10px;">
+                            <input type="radio" name="studyMode" value="default" checked>
+                            기본 모드 (힌트 숨김)
+                        </label>
+                        <label style="display: block; margin-bottom: 10px;">
+                            <input type="radio" name="studyMode" value="hints">
+                            💡 힌트 표시 모드 (학습용)
+                        </label>
+                        <label style="display: block; margin-bottom: 10px;">
+                            <input type="radio" name="studyMode" value="hard">
+                            🔥 Hard 모드 (힌트 완전 제거)
+                        </label>
+                        <label style="display: block; margin-bottom: 10px;">
+                            <input type="radio" name="studyMode" value="ultra">
+                            💀 Ultra 모드 (Chaos Engineering + 실전 난이도)
+                        </label>
+                    </div>
+                    <p style="font-size: 0.9em; color: #6c757d; margin-top: 10px;">
+                        💀 Ultra 모드: 웹 환경에서는 Chaos Engineering 기능이 제한됩니다.
+                        CLI 모드에서 전체 기능을 사용하세요.
+                    </p>
                 </div>
 
                 <div style="text-align: center; margin-top: 30px;">
