@@ -1,121 +1,126 @@
-id: "A016"
-title: "CrashLoopBackOff Pod 트러블슈팅"
-domain: "Troubleshooting"
-difficulty: "medium"
+id: A016
+title: CrashLoopBackOff Pod 트러블슈팅
+domain: Troubleshooting
+difficulty: medium
 weight: 8
 time_estimate: 15
+description: 'Context: kubectl config use-context cluster1
 
-description: |
-  Context: kubectl config use-context cluster1
 
   production 네임스페이스의 web-app Pod가 CrashLoopBackOff 상태입니다.
+
   Pod의 로그와 이벤트를 확인하여 문제를 해결해야 합니다.
 
-task: |
-  다음 작업을 수행하세요:
+  '
+task: '다음 작업을 수행하세요:
+
 
   1. web-app Pod의 문제를 진단하고 근본 원인을 파악하세요
+
   2. 문제를 수정하여 Pod가 Running 상태가 되도록 하세요
+
   3. 발견한 문제와 해결 방법을 /tmp/crashloop-solution.txt에 작성하세요
+
 
   힌트: 이미 deployment가 생성되어 있습니다
 
+  '
 hints:
-  - "kubectl logs로 컨테이너 로그 확인"
-  - "kubectl describe로 이벤트 확인"
-  - "kubectl edit으로 리소스 수정 가능"
-  - "이미지 이름, 환경 변수, 명령어 등을 확인하세요"
-
+- kubectl logs로 컨테이너 로그 확인
+- kubectl describe로 이벤트 확인
+- kubectl edit으로 리소스 수정 가능
+- 이미지 이름, 환경 변수, 명령어 등을 확인하세요
 validation:
   checks:
-    - resource: "pod"
-      name: "web-app"
-      namespace: "production"
-      condition: "Running"
+  - resource: pod
+    name: web-app
+    namespace: production
+    condition: Running
+  - file: /tmp/crashloop-solution.txt
+    exists: true
+solution: '트러블슈팅 단계:
 
-    - file: "/tmp/crashloop-solution.txt"
-      exists: true
-
-solution: |
-  트러블슈팅 단계:
 
   ```bash
+
   # 1. Pod 상태 확인
+
   kubectl get pods -n production
 
+
   # 2. Pod 상세 정보 확인
+
   kubectl describe pod web-app -n production
 
+
   # 3. 로그 확인
+
   kubectl logs web-app -n production
+
   kubectl logs web-app -n production --previous  # 이전 컨테이너 로그
+
 
   # 4. 일반적인 CrashLoopBackOff 원인들:
 
+
   # 원인 1: 잘못된 이미지 이름
+
   kubectl edit deployment web-app -n production
+
   # image: nginx:lastest -> image: nginx:latest
 
+
   # 원인 2: 없는 ConfigMap/Secret 참조
+
   kubectl get configmap -n production
+
   kubectl create configmap app-config --from-literal=key=value -n production
 
+
   # 원인 3: 잘못된 명령어
+
   # command: ["/bin/bash", "-c", "sleep 10 && exit 1"]
+
   # -> command: ["/bin/bash", "-c", "sleep infinity"]
 
+
   # 원인 4: 부족한 리소스
+
   # resources.limits.memory: 10Mi -> 256Mi
 
+
   # 5. 수정 후 확인
+
   kubectl get pods -n production -w
+
   kubectl logs web-app -n production
 
+
   # 6. 해결 방법 문서화
+
   cat > /tmp/crashloop-solution.txt << EOF
+
   문제: CrashLoopBackOff 상태의 Pod
+
   원인: [발견한 실제 원인 작성]
+
   해결: [적용한 해결 방법 작성]
+
   결과: Pod가 Running 상태로 정상 작동
+
   EOF
+
   ```
 
-explanation: |
-  CrashLoopBackOff 트러블슈팅을 평가합니다.
-
-  주요 원인들:
-  1. 이미지 문제:
-     - 존재하지 않는 이미지
-     - 잘못된 태그
-     - Private 레지스트리 인증 실패
-
-  2. 애플리케이션 오류:
-     - 시작 시 크래시
-     - 잘못된 환경 변수
-     - 없는 파일 참조
-
-  3. 리소스 부족:
-     - 메모리 OOM
-     - CPU 제한
-     - 디스크 공간
-
-  4. 구성 오류:
-     - 없는 ConfigMap/Secret
-     - 잘못된 볼륨 마운트
-     - 권한 문제
-
-  진단 방법:
-  1. kubectl describe: 이벤트 확인
-  2. kubectl logs: 로그 분석
-  3. kubectl logs --previous: 이전 컨테이너 로그
-  4. kubectl get events: 클러스터 이벤트
-
-  실무 팁:
-  - 항상 로그를 먼저 확인
-  - 이벤트에서 힌트 찾기
-  - 리소스 제한 확인
-  - 최근 변경 사항 검토
-
+  '
+explanation: "CrashLoopBackOff 트러블슈팅을 평가합니다.\n\n주요 원인들:\n1. 이미지 문제:\n   - 존재하지 않는\
+  \ 이미지\n   - 잘못된 태그\n   - Private 레지스트리 인증 실패\n\n2. 애플리케이션 오류:\n   - 시작 시 크래시\n \
+  \  - 잘못된 환경 변수\n   - 없는 파일 참조\n\n3. 리소스 부족:\n   - 메모리 OOM\n   - CPU 제한\n   - 디스크\
+  \ 공간\n\n4. 구성 오류:\n   - 없는 ConfigMap/Secret\n   - 잘못된 볼륨 마운트\n   - 권한 문제\n\n진단 방법:\n\
+  1. kubectl describe: 이벤트 확인\n2. kubectl logs: 로그 분석\n3. kubectl logs --previous:\
+  \ 이전 컨테이너 로그\n4. kubectl get events: 클러스터 이벤트\n\n실무 팁:\n- 항상 로그를 먼저 확인\n- 이벤트에서\
+  \ 힌트 찾기\n- 리소스 제한 확인\n- 최근 변경 사항 검토\n"
 references:
-  - "https://kubernetes.io/docs/tasks/debug/debug-application/debug-pods/"
-  - "https://kubernetes.io/docs/tasks/debug/debug-application/determine-reason-pod-failure/"
+- https://kubernetes.io/docs/tasks/debug/debug-application/debug-pods/
+- https://kubernetes.io/docs/tasks/debug/debug-application/determine-reason-pod-failure/
+context: cluster4

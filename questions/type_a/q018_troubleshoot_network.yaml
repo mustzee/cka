@@ -1,233 +1,83 @@
-id: "A018"
-title: "NetworkPolicy 트러블슈팅"
-domain: "Troubleshooting"
-difficulty: "medium"
+id: A018
+title: NetworkPolicy 트러블슈팅
+domain: Troubleshooting
+difficulty: medium
 weight: 7
 time_estimate: 15
+description: 'Context: kubectl config use-context cluster1
 
-description: |
-  Context: kubectl config use-context cluster1
 
   production 네임스페이스의 frontend Pod에서 backend Pod로 연결이 되지 않습니다.
+
   NetworkPolicy로 인한 문제로 의심되며, 필요한 트래픽만 허용하도록 수정해야 합니다.
 
-task: |
-  다음 작업을 수행하세요:
-
-  1. frontend Pod에서 backend Pod로의 연결이 실패하는 원인을 파악하세요
-  2. NetworkPolicy를 수정하여 다음 트래픽만 허용하세요:
-     - frontend -> backend: TCP 8080 포트
-     - backend -> database: TCP 5432 포트
-  3. 다른 모든 인바운드 트래픽은 차단되어야 합니다
-  4. 연결 테스트를 수행하고 결과를 /tmp/network-test.txt에 저장하세요
-
+  '
+task: "다음 작업을 수행하세요:\n\n1. frontend Pod에서 backend Pod로의 연결이 실패하는 원인을 파악하세요\n2. NetworkPolicy를\
+  \ 수정하여 다음 트래픽만 허용하세요:\n   - frontend -> backend: TCP 8080 포트\n   - backend -> database:\
+  \ TCP 5432 포트\n3. 다른 모든 인바운드 트래픽은 차단되어야 합니다\n4. 연결 테스트를 수행하고 결과를 /tmp/network-test.txt에\
+  \ 저장하세요\n"
 hints:
-  - "kubectl get networkpolicy로 현재 정책 확인"
-  - "kubectl exec로 Pod 간 연결 테스트"
-  - "curl 또는 nc 명령어 사용 가능"
-  - "podSelector와 port 설정 확인"
-
+- kubectl get networkpolicy로 현재 정책 확인
+- kubectl exec로 Pod 간 연결 테스트
+- curl 또는 nc 명령어 사용 가능
+- podSelector와 port 설정 확인
 validation:
   checks:
-    - resource: "networkpolicy"
-      namespace: "production"
-      exists: true
-
-    - file: "/tmp/network-test.txt"
-      exists: true
-
-    - custom_check: |
-        # frontend -> backend 연결 테스트
-        kubectl exec -n production frontend -- curl -s backend:8080 > /dev/null 2>&1
-        if [ $? -eq 0 ]; then
-          echo "PASS"
-        else
-          echo "FAIL: Cannot connect from frontend to backend"
-        fi
-
-solution: |
-  트러블슈팅 및 해결:
-
-  ```bash
-  # 1. 현재 NetworkPolicy 확인
-  kubectl get networkpolicy -n production
-  kubectl describe networkpolicy -n production
-
-  # 2. Pod 정보 확인
-  kubectl get pods -n production --show-labels
-  kubectl describe pod frontend -n production
-  kubectl describe pod backend -n production
-
-  # 3. 연결 테스트 (문제 재현)
-  kubectl exec -n production frontend -- curl -m 5 backend:8080
-  # 타임아웃 발생 확인
-
-  # 4. 기존 NetworkPolicy 확인
-  kubectl get networkpolicy -n production -o yaml
-
-  # 5. Backend용 NetworkPolicy 생성/수정
-  cat <<EOF | kubectl apply -f -
-  apiVersion: networking.k8s.io/v1
-  kind: NetworkPolicy
-  metadata:
-    name: backend-network-policy
+  - resource: networkpolicy
     namespace: production
-  spec:
-    podSelector:
-      matchLabels:
-        app: backend
-    policyTypes:
-    - Ingress
-    - Egress
-    ingress:
-    - from:
-      - podSelector:
-          matchLabels:
-            app: frontend
-      ports:
-      - protocol: TCP
-        port: 8080
-    egress:
-    - to:
-      - podSelector:
-          matchLabels:
-            app: database
-      ports:
-      - protocol: TCP
-        port: 5432
-    # DNS 해결을 위한 egress (필수!)
-    - to:
-      - namespaceSelector:
-          matchLabels:
-            name: kube-system
-      ports:
-      - protocol: UDP
-        port: 53
-  EOF
-
-  # 6. Frontend용 NetworkPolicy (필요 시)
-  cat <<EOF | kubectl apply -f -
-  apiVersion: networking.k8s.io/v1
-  kind: NetworkPolicy
-  metadata:
-    name: frontend-network-policy
-    namespace: production
-  spec:
-    podSelector:
-      matchLabels:
-        app: frontend
-    policyTypes:
-    - Egress
-    egress:
-    - to:
-      - podSelector:
-          matchLabels:
-            app: backend
-      ports:
-      - protocol: TCP
-        port: 8080
-    # DNS 해결을 위한 egress
-    - to:
-      - namespaceSelector:
-          matchLabels:
-            name: kube-system
-      ports:
-      - protocol: UDP
-        port: 53
-  EOF
-
-  # 7. 연결 재테스트
-  # frontend -> backend
-  kubectl exec -n production frontend -- curl -m 5 backend:8080
-  echo "Frontend to Backend: $?"
-
-  # 다른 Pod에서 backend 접근 시도 (차단되어야 함)
-  kubectl run test-pod --rm -i --tty --image=busybox -n production -- \
-    wget -O- --timeout=5 backend:8080
-  # 타임아웃되어야 정상
-
-  # 8. 결과 저장
-  cat > /tmp/network-test.txt << EOF
-  NetworkPolicy 트러블슈팅 결과:
-
-  문제:
-  - frontend Pod에서 backend Pod 연결 실패
-  - NetworkPolicy 설정 오류
-
-  원인:
-  - backend에 대한 ingress 규칙 누락
-  - 또는 잘못된 podSelector/labels
-
-  해결:
-  - backend-network-policy 수정/생성
-  - frontend의 label과 매칭되도록 podSelector 설정
-  - 포트 8080 명시적 허용
-  - DNS egress 규칙 추가
-
-  테스트 결과:
-  ✅ frontend -> backend:8080 연결 성공
-  ✅ 다른 Pod -> backend 연결 차단
-  ✅ backend -> database:5432 연결 가능
-  EOF
-
-  cat /tmp/network-test.txt
-
-  # 9. 디버깅 명령어들
-  # NetworkPolicy 적용 확인
-  kubectl get networkpolicy -n production -o yaml
-
-  # Pod IP 확인
-  kubectl get pods -n production -o wide
-
-  # 네트워크 플러그인 확인
-  kubectl get pods -n kube-system | grep -E "calico|cilium|weave"
-
-  # Pod에서 직접 IP 테스트
-  kubectl exec -n production frontend -- nc -zv <backend-ip> 8080
-  ```
-
-explanation: |
-  NetworkPolicy 트러블슈팅을 평가합니다.
-
-  주요 개념:
-  1. NetworkPolicy 구조:
-     - podSelector: 대상 Pod 선택
-     - policyTypes: Ingress/Egress 지정
-     - ingress.from: 허용할 소스
-     - egress.to: 허용할 목적지
-
-  2. 일반적인 실수:
-     - Label mismatch: podSelector와 실제 Pod label 불일치
-     - DNS egress 누락: DNS 해결 불가
-     - 네임스페이스 미지정: 다른 네임스페이스 Pod 차단
-     - Port 누락: 포트 지정 안 하면 모든 포트 차단
-
-  3. 트러블슈팅 순서:
-     - Step 1: NetworkPolicy 존재 여부
-     - Step 2: Label 매칭 확인
-     - Step 3: from/to 규칙 확인
-     - Step 4: 포트 확인
-     - Step 5: DNS egress 확인
-
-  4. 테스트 방법:
-     - kubectl exec + curl/wget
-     - kubectl exec + nc (netcat)
-     - 임시 Pod 생성하여 테스트
-     - tcpdump로 패킷 확인
-
-  실무 팁:
-  - 항상 DNS egress 규칙 추가
-  - Default deny 정책 먼저 적용
-  - Label 규칙 명확히 정의
-  - 네임스페이스 격리 고려
-  - CNI 플러그인별 지원 기능 확인
-
-  주의사항:
-  - NetworkPolicy는 CNI 플러그인 의존적
-  - 모든 CNI가 NetworkPolicy 지원하는 것은 아님
-  - Calico, Cilium, Weave 등은 지원
-  - Flannel은 기본적으로 미지원
-
+    exists: true
+  - file: /tmp/network-test.txt
+    exists: true
+  - custom_check: "# frontend -> backend 연결 테스트\nkubectl exec -n production frontend\
+      \ -- curl -s backend:8080 > /dev/null 2>&1\nif [ $? -eq 0 ]; then\n  echo \"\
+      PASS\"\nelse\n  echo \"FAIL: Cannot connect from frontend to backend\"\nfi\n"
+solution: "트러블슈팅 및 해결:\n\n```bash\n# 1. 현재 NetworkPolicy 확인\nkubectl get networkpolicy\
+  \ -n production\nkubectl describe networkpolicy -n production\n\n# 2. Pod 정보 확인\n\
+  kubectl get pods -n production --show-labels\nkubectl describe pod frontend -n production\n\
+  kubectl describe pod backend -n production\n\n# 3. 연결 테스트 (문제 재현)\nkubectl exec\
+  \ -n production frontend -- curl -m 5 backend:8080\n# 타임아웃 발생 확인\n\n# 4. 기존 NetworkPolicy\
+  \ 확인\nkubectl get networkpolicy -n production -o yaml\n\n# 5. Backend용 NetworkPolicy\
+  \ 생성/수정\ncat <<EOF | kubectl apply -f -\napiVersion: networking.k8s.io/v1\nkind:\
+  \ NetworkPolicy\nmetadata:\n  name: backend-network-policy\n  namespace: production\n\
+  spec:\n  podSelector:\n    matchLabels:\n      app: backend\n  policyTypes:\n  -\
+  \ Ingress\n  - Egress\n  ingress:\n  - from:\n    - podSelector:\n        matchLabels:\n\
+  \          app: frontend\n    ports:\n    - protocol: TCP\n      port: 8080\n  egress:\n\
+  \  - to:\n    - podSelector:\n        matchLabels:\n          app: database\n  \
+  \  ports:\n    - protocol: TCP\n      port: 5432\n  # DNS 해결을 위한 egress (필수!)\n\
+  \  - to:\n    - namespaceSelector:\n        matchLabels:\n          name: kube-system\n\
+  \    ports:\n    - protocol: UDP\n      port: 53\nEOF\n\n# 6. Frontend용 NetworkPolicy\
+  \ (필요 시)\ncat <<EOF | kubectl apply -f -\napiVersion: networking.k8s.io/v1\nkind:\
+  \ NetworkPolicy\nmetadata:\n  name: frontend-network-policy\n  namespace: production\n\
+  spec:\n  podSelector:\n    matchLabels:\n      app: frontend\n  policyTypes:\n \
+  \ - Egress\n  egress:\n  - to:\n    - podSelector:\n        matchLabels:\n     \
+  \     app: backend\n    ports:\n    - protocol: TCP\n      port: 8080\n  # DNS 해결을\
+  \ 위한 egress\n  - to:\n    - namespaceSelector:\n        matchLabels:\n         \
+  \ name: kube-system\n    ports:\n    - protocol: UDP\n      port: 53\nEOF\n\n# 7.\
+  \ 연결 재테스트\n# frontend -> backend\nkubectl exec -n production frontend -- curl -m\
+  \ 5 backend:8080\necho \"Frontend to Backend: $?\"\n\n# 다른 Pod에서 backend 접근 시도 (차단되어야\
+  \ 함)\nkubectl run test-pod --rm -i --tty --image=busybox -n production -- \\\n \
+  \ wget -O- --timeout=5 backend:8080\n# 타임아웃되어야 정상\n\n# 8. 결과 저장\ncat > /tmp/network-test.txt\
+  \ << EOF\nNetworkPolicy 트러블슈팅 결과:\n\n문제:\n- frontend Pod에서 backend Pod 연결 실패\n-\
+  \ NetworkPolicy 설정 오류\n\n원인:\n- backend에 대한 ingress 규칙 누락\n- 또는 잘못된 podSelector/labels\n\
+  \n해결:\n- backend-network-policy 수정/생성\n- frontend의 label과 매칭되도록 podSelector 설정\n\
+  - 포트 8080 명시적 허용\n- DNS egress 규칙 추가\n\n테스트 결과:\n✅ frontend -> backend:8080 연결 성공\n\
+  ✅ 다른 Pod -> backend 연결 차단\n✅ backend -> database:5432 연결 가능\nEOF\n\ncat /tmp/network-test.txt\n\
+  \n# 9. 디버깅 명령어들\n# NetworkPolicy 적용 확인\nkubectl get networkpolicy -n production\
+  \ -o yaml\n\n# Pod IP 확인\nkubectl get pods -n production -o wide\n\n# 네트워크 플러그인\
+  \ 확인\nkubectl get pods -n kube-system | grep -E \"calico|cilium|weave\"\n\n# Pod에서\
+  \ 직접 IP 테스트\nkubectl exec -n production frontend -- nc -zv <backend-ip> 8080\n```\n"
+explanation: "NetworkPolicy 트러블슈팅을 평가합니다.\n\n주요 개념:\n1. NetworkPolicy 구조:\n   - podSelector:\
+  \ 대상 Pod 선택\n   - policyTypes: Ingress/Egress 지정\n   - ingress.from: 허용할 소스\n  \
+  \ - egress.to: 허용할 목적지\n\n2. 일반적인 실수:\n   - Label mismatch: podSelector와 실제 Pod\
+  \ label 불일치\n   - DNS egress 누락: DNS 해결 불가\n   - 네임스페이스 미지정: 다른 네임스페이스 Pod 차단\n\
+  \   - Port 누락: 포트 지정 안 하면 모든 포트 차단\n\n3. 트러블슈팅 순서:\n   - Step 1: NetworkPolicy 존재\
+  \ 여부\n   - Step 2: Label 매칭 확인\n   - Step 3: from/to 규칙 확인\n   - Step 4: 포트 확인\n\
+  \   - Step 5: DNS egress 확인\n\n4. 테스트 방법:\n   - kubectl exec + curl/wget\n   - kubectl\
+  \ exec + nc (netcat)\n   - 임시 Pod 생성하여 테스트\n   - tcpdump로 패킷 확인\n\n실무 팁:\n- 항상 DNS\
+  \ egress 규칙 추가\n- Default deny 정책 먼저 적용\n- Label 규칙 명확히 정의\n- 네임스페이스 격리 고려\n- CNI\
+  \ 플러그인별 지원 기능 확인\n\n주의사항:\n- NetworkPolicy는 CNI 플러그인 의존적\n- 모든 CNI가 NetworkPolicy\
+  \ 지원하는 것은 아님\n- Calico, Cilium, Weave 등은 지원\n- Flannel은 기본적으로 미지원\n"
 references:
-  - "https://kubernetes.io/docs/concepts/services-networking/network-policies/"
-  - "https://kubernetes.io/docs/tasks/administer-cluster/declare-network-policy/"
+- https://kubernetes.io/docs/concepts/services-networking/network-policies/
+- https://kubernetes.io/docs/tasks/administer-cluster/declare-network-policy/
+context: cluster6

@@ -1,170 +1,56 @@
-id: "A013"
-title: "Taints와 Tolerations 사용"
-domain: "Workloads & Scheduling"
-difficulty: "medium"
+id: A013
+title: Taints와 Tolerations 사용
+domain: Workloads & Scheduling
+difficulty: medium
 weight: 6
 time_estimate: 10
+description: 'Context: kubectl config use-context cluster1
 
-description: |
-  Context: kubectl config use-context cluster1
 
   특정 노드를 전용으로 사용하기 위해 Taint를 설정해야 합니다.
 
-task: |
-  다음 작업을 수행하세요:
-
-  1. 워커 노드 중 하나에 Taint 추가:
-     - Key: dedicated
-     - Value: database
-     - Effect: NoSchedule
-
-  2. Pod 생성:
-     - 이름: db-pod
-     - 네임스페이스: default
-     - 이미지: mysql:8.0
-     - 환경변수: MYSQL_ROOT_PASSWORD=secret
-     - Toleration 추가하여 위 Taint가 있는 노드에 스케줄링 가능
-
-  3. /tmp/tainted-node.txt에 Taint를 추가한 노드 이름 저장
-
+  '
+task: "다음 작업을 수행하세요:\n\n1. 워커 노드 중 하나에 Taint 추가:\n   - Key: dedicated\n   - Value:\
+  \ database\n   - Effect: NoSchedule\n\n2. Pod 생성:\n   - 이름: db-pod\n   - 네임스페이스:\
+  \ default\n   - 이미지: mysql:8.0\n   - 환경변수: MYSQL_ROOT_PASSWORD=secret\n   - Toleration\
+  \ 추가하여 위 Taint가 있는 노드에 스케줄링 가능\n\n3. /tmp/tainted-node.txt에 Taint를 추가한 노드 이름 저장\n"
 hints:
-  - "kubectl taint nodes <node-name> key=value:effect"
-  - "tolerations 필드 사용"
-  - "operator: Equal 또는 Exists"
-
+- kubectl taint nodes <node-name> key=value:effect
+- tolerations 필드 사용
+- 'operator: Equal 또는 Exists'
 validation:
   checks:
-    - resource: "pod"
-      name: "db-pod"
-      namespace: "default"
-
-    - file: "/tmp/tainted-node.txt"
-      exists: true
-
-solution: |
-  해결 방법:
-
-  ```bash
-  # 워커 노드 확인
-  kubectl get nodes
-
-  # 워커 노드 선택 (예: cka-simulator-worker)
-  NODE_NAME=$(kubectl get nodes -l node-type=worker -o jsonpath='{.items[0].metadata.name}')
-
-  # Taint 추가
-  kubectl taint nodes $NODE_NAME dedicated=database:NoSchedule
-
-  # 노드 이름 저장
-  echo $NODE_NAME > /tmp/tainted-node.txt
-
-  # Pod 생성
-  cat <<EOF | kubectl apply -f -
-  apiVersion: v1
-  kind: Pod
-  metadata:
+  - resource: pod
     name: db-pod
     namespace: default
-  spec:
-    tolerations:
-    - key: dedicated
-      operator: Equal
-      value: database
-      effect: NoSchedule
-    containers:
-    - name: mysql
-      image: mysql:8.0
-      env:
-      - name: MYSQL_ROOT_PASSWORD
-        value: secret
-  EOF
-
-  # 확인
-  kubectl describe node $NODE_NAME | grep Taints
-  kubectl get pod db-pod -o wide
-
-  # (선택) Taint 제거
-  # kubectl taint nodes $NODE_NAME dedicated=database:NoSchedule-
-  ```
-
-explanation: |
-  Taints와 Tolerations를 통한 Pod 스케줄링 제어를 평가합니다.
-
-  Taints (오염):
-  - 노드에 설정
-  - 특정 Pod만 스케줄링되도록 제한
-  - 형식: key=value:effect
-
-  Tolerations (허용):
-  - Pod에 설정
-  - Taint가 있는 노드에 스케줄링 허용
-
-  Effect 타입:
-  1. NoSchedule:
-     - 새 Pod 스케줄링 방지
-     - 기존 Pod는 유지
-
-  2. PreferNoSchedule:
-     - 가능하면 스케줄링 방지 (소프트)
-     - 다른 노드 없으면 스케줄링
-
-  3. NoExecute:
-     - 새 Pod 스케줄링 방지
-     - 기존 Pod도 제거 (toleration 없으면)
-
-  Operator:
-  1. Equal:
-     - key, value, effect 모두 일치
-     ```yaml
-     tolerations:
-     - key: dedicated
-       operator: Equal
-       value: database
-       effect: NoSchedule
-     ```
-
-  2. Exists:
-     - key만 일치 (value 무시)
-     ```yaml
-     tolerations:
-     - key: dedicated
-       operator: Exists
-       effect: NoSchedule
-     ```
-
-  특수 Toleration:
-  ```yaml
-  # 모든 Taint 허용
-  tolerations:
-  - operator: Exists
-  ```
-
-  사용 사례:
-  1. 전용 노드:
-     - GPU 노드를 ML 워크로드 전용
-     - DB 노드를 데이터베이스 전용
-
-  2. 노드 상태:
-     - 유지보수 중인 노드
-     - 문제 있는 노드 격리
-
-  3. 특수 하드웨어:
-     - SSD 노드
-     - 고성능 CPU 노드
-
-  tolerationSeconds:
-  - NoExecute에서 사용
-  - 지정 시간 후 Pod 제거
-  ```yaml
-  tolerations:
-  - key: node.kubernetes.io/not-ready
-    operator: Exists
-    effect: NoExecute
-    tolerationSeconds: 300
-  ```
-
-  vs Node Affinity:
-  - Taint/Toleration: 노드가 Pod 거부
-  - Node Affinity: Pod가 노드 선택
-
+  - file: /tmp/tainted-node.txt
+    exists: true
+solution: "해결 방법:\n\n```bash\n# 워커 노드 확인\nkubectl get nodes\n\n# 워커 노드 선택 (예: cka-simulator-worker)\n\
+  NODE_NAME=$(kubectl get nodes -l node-type=worker -o jsonpath='{.items[0].metadata.name}')\n\
+  \n# Taint 추가\nkubectl taint nodes $NODE_NAME dedicated=database:NoSchedule\n\n#\
+  \ 노드 이름 저장\necho $NODE_NAME > /tmp/tainted-node.txt\n\n# Pod 생성\ncat <<EOF | kubectl\
+  \ apply -f -\napiVersion: v1\nkind: Pod\nmetadata:\n  name: db-pod\n  namespace:\
+  \ default\nspec:\n  tolerations:\n  - key: dedicated\n    operator: Equal\n    value:\
+  \ database\n    effect: NoSchedule\n  containers:\n  - name: mysql\n    image: mysql:8.0\n\
+  \    env:\n    - name: MYSQL_ROOT_PASSWORD\n      value: secret\nEOF\n\n# 확인\nkubectl\
+  \ describe node $NODE_NAME | grep Taints\nkubectl get pod db-pod -o wide\n\n# (선택)\
+  \ Taint 제거\n# kubectl taint nodes $NODE_NAME dedicated=database:NoSchedule-\n```\n"
+explanation: "Taints와 Tolerations를 통한 Pod 스케줄링 제어를 평가합니다.\n\nTaints (오염):\n- 노드에 설정\n\
+  - 특정 Pod만 스케줄링되도록 제한\n- 형식: key=value:effect\n\nTolerations (허용):\n- Pod에 설정\n-\
+  \ Taint가 있는 노드에 스케줄링 허용\n\nEffect 타입:\n1. NoSchedule:\n   - 새 Pod 스케줄링 방지\n   -\
+  \ 기존 Pod는 유지\n\n2. PreferNoSchedule:\n   - 가능하면 스케줄링 방지 (소프트)\n   - 다른 노드 없으면 스케줄링\n\
+  \n3. NoExecute:\n   - 새 Pod 스케줄링 방지\n   - 기존 Pod도 제거 (toleration 없으면)\n\nOperator:\n\
+  1. Equal:\n   - key, value, effect 모두 일치\n   ```yaml\n   tolerations:\n   - key:\
+  \ dedicated\n     operator: Equal\n     value: database\n     effect: NoSchedule\n\
+  \   ```\n\n2. Exists:\n   - key만 일치 (value 무시)\n   ```yaml\n   tolerations:\n  \
+  \ - key: dedicated\n     operator: Exists\n     effect: NoSchedule\n   ```\n\n특수\
+  \ Toleration:\n```yaml\n# 모든 Taint 허용\ntolerations:\n- operator: Exists\n```\n\n\
+  사용 사례:\n1. 전용 노드:\n   - GPU 노드를 ML 워크로드 전용\n   - DB 노드를 데이터베이스 전용\n\n2. 노드 상태:\n\
+  \   - 유지보수 중인 노드\n   - 문제 있는 노드 격리\n\n3. 특수 하드웨어:\n   - SSD 노드\n   - 고성능 CPU 노드\n\
+  \ntolerationSeconds:\n- NoExecute에서 사용\n- 지정 시간 후 Pod 제거\n```yaml\ntolerations:\n\
+  - key: node.kubernetes.io/not-ready\n  operator: Exists\n  effect: NoExecute\n \
+  \ tolerationSeconds: 300\n```\n\nvs Node Affinity:\n- Taint/Toleration: 노드가 Pod\
+  \ 거부\n- Node Affinity: Pod가 노드 선택\n"
 references:
-  - "https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/"
+- https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/
+context: cluster1

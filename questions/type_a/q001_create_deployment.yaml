@@ -1,74 +1,68 @@
-id: "A001"
-title: "기본 Deployment 생성"
-domain: "Workloads & Scheduling"
-difficulty: "easy"
+id: A001
+title: 기본 Deployment 생성
+domain: Workloads & Scheduling
+difficulty: easy
 weight: 4
 time_estimate: 5
+description: 'Context: kubectl config use-context cluster1
 
-description: |
-  Context: kubectl config use-context cluster1
 
   production 네임스페이스에 nginx 웹 애플리케이션을 배포해야 합니다.
 
-task: |
-  다음 요구사항을 만족하는 Deployment를 생성하세요:
+  '
+task: '다음 요구사항을 만족하는 Deployment를 생성하세요:
+
 
   - 이름: web-server
+
   - 네임스페이스: production (없으면 생성)
+
   - 이미지: nginx:1.24
+
   - 레플리카: 3
+
   - 레이블: app=web, tier=frontend
 
+  '
 hints:
-  - "kubectl create deployment 명령어 사용 가능"
-  - "네임스페이스를 먼저 생성해야 합니다"
-
+- kubectl create deployment 명령어 사용 가능
+- 네임스페이스를 먼저 생성해야 합니다
 validation:
   checks:
-    - resource: "namespace"
-      name: "production"
+  - resource: namespace
+    name: production
+  - resource: deployment
+    name: web-server
+    namespace: production
+    conditions:
+    - field: spec.replicas
+      value: 3
+    - field: spec.template.spec.containers[0].image
+      value: nginx:1.24
+solution: "해결 방법:\n\n```bash\n# 네임스페이스 생성\nkubectl create namespace production\n\n\
+  # Deployment 생성\nkubectl create deployment web-server \\\n  --image=nginx:1.24 \\\
+  \n  --replicas=3 \\\n  -n production\n\n# 레이블 추가\nkubectl label deployment web-server\
+  \ app=web tier=frontend -n production\n\n# 확인\nkubectl get deployment web-server\
+  \ -n production\nkubectl get pods -n production -l app=web\n```\n"
+explanation: '이 문제는 기본적인 Deployment 생성 능력을 평가합니다.
 
-    - resource: "deployment"
-      name: "web-server"
-      namespace: "production"
-      conditions:
-        - field: "spec.replicas"
-          value: 3
-        - field: "spec.template.spec.containers[0].image"
-          value: "nginx:1.24"
-
-solution: |
-  해결 방법:
-
-  ```bash
-  # 네임스페이스 생성
-  kubectl create namespace production
-
-  # Deployment 생성
-  kubectl create deployment web-server \
-    --image=nginx:1.24 \
-    --replicas=3 \
-    -n production
-
-  # 레이블 추가
-  kubectl label deployment web-server app=web tier=frontend -n production
-
-  # 확인
-  kubectl get deployment web-server -n production
-  kubectl get pods -n production -l app=web
-  ```
-
-explanation: |
-  이 문제는 기본적인 Deployment 생성 능력을 평가합니다.
 
   핵심 개념:
+
   - Deployment는 Pod의 선언적 업데이트를 제공합니다
+
   - 레플리카를 통해 고가용성을 보장합니다
+
   - 네임스페이스로 리소스를 격리합니다
 
+
   실무 적용:
+
   - 프로덕션 환경에서는 항상 네임스페이스를 사용하여 리소스를 분리합니다
+
   - 레이블을 통해 리소스를 효과적으로 관리할 수 있습니다
 
+  '
 references:
-  - "https://kubernetes.io/docs/concepts/workloads/controllers/deployment/"
+- https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+context: cluster1

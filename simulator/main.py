@@ -26,9 +26,11 @@ console = Console()
 class CKASimulator:
     """CKA 시험 시뮬레이터"""
 
-    def __init__(self, exam_type: str = "A", practice_mode: bool = False):
+    def __init__(self, exam_type: str = "A", practice_mode: bool = False, show_hints: bool = False, hard_mode: bool = False):
         self.exam_type = exam_type.upper()
         self.practice_mode = practice_mode
+        self.show_hints = show_hints  # 힌트 표시 여부
+        self.hard_mode = hard_mode  # 실전 모드 (힌트 완전 제거)
         self.loader = QuestionLoader()
         self.grader = AutoGrader()
         self.reporter = ReportGenerator()
@@ -36,26 +38,39 @@ class CKASimulator:
         self.questions = []
         self.current_question_idx = 0
         self.auto_yes = False  # 자동 확인 모드
+        self.context_errors = 0  # Context 전환 오류 횟수
 
     def show_welcome(self):
         """환영 메시지 표시"""
+        mode_description = '연습 모드 (타이머 없음)' if self.practice_mode else '실전 모드 (2시간)'
+        if self.hard_mode:
+            mode_description += ' - 🔥 HARD MODE (힌트 없음, 실전 난이도)'
+        elif self.show_hints:
+            mode_description += ' - 💡 힌트 표시 모드'
+        else:
+            mode_description += ' - 힌트 숨김 모드'
+
         welcome_text = f"""
 [bold cyan]Kubernetes CKA 시험 시뮬레이터[/bold cyan]
 
 시험 타입: [bold]{self.exam_type}[/bold]
-모드: [bold]{'연습 모드 (타이머 없음)' if self.practice_mode else '실전 모드 (2시간)'}[/bold]
+모드: [bold]{mode_description}[/bold]
 
 [yellow]실제 CKA 시험과 동일한 환경에서 진행됩니다.[/yellow]
 
 [bold green]준비사항:[/bold green]
-✓ Kubernetes 클러스터가 실행 중이어야 합니다
+✓ Kubernetes 클러스터가 실행 중이어야 합니다 (멀티 클러스터 권장)
 ✓ kubectl 명령어를 사용할 수 있어야 합니다
 ✓ 터미널을 별도로 열어서 작업하세요
 
 [bold red]주의사항:[/bold red]
 • 시험 중에는 시뮬레이터를 종료하지 마세요
-• 각 문제마다 적절한 context를 사용하세요
+• [bold red]각 문제마다 올바른 context로 전환하세요 (kubectl config use-context <cluster>)[/bold red]
+• Context 전환을 잊으면 0점 처리될 수 있습니다!
 • 시간이 종료되면 자동으로 채점됩니다
+
+[dim]💡 힌트가 필요하면 --hints 플래그를 사용하세요
+🔥 실전처럼 연습하려면 --hard 플래그를 사용하세요[/dim]
         """
 
         console.print(Panel(welcome_text, border_style="cyan"))
@@ -121,20 +136,63 @@ class CKASimulator:
             f"[bold]예상 소요 시간:[/bold] {question.get('time_estimate', 0)}분"
         )
 
+        # Context 정보 표시 (있는 경우)
+        if "context" in question and question["context"]:
+            console.print(f"[bold red]⚠️  Required Context:[/bold red] [bold yellow]{question['context']}[/bold yellow]")
+            console.print(f"[dim]→ kubectl config use-context {question['context']}[/dim]")
+
         console.print(f"\n[bold yellow]문제:[/bold yellow]")
         console.print(question.get("description", ""))
         console.print(question.get("task", ""))
 
-        if "hints" in question and question["hints"]:
-            console.print(f"\n[bold green]힌트:[/bold green]")
-            for hint in question["hints"]:
-                console.print(f"  💡 {hint}")
+        # 힌트 표시 로직
+        if not self.hard_mode and "hints" in question and question["hints"]:
+            if self.show_hints:
+                # --hints 플래그가 있으면 힌트 표시
+                console.print(f"\n[bold green]💡 힌트:[/bold green]")
+                for hint in question["hints"]:
+                    console.print(f"  • {hint}")
+            else:
+                # 기본 모드: 힌트 숨김 (힌트가 있다는 것만 알림)
+                console.print(f"\n[dim]💡 힌트가 숨겨져 있습니다. --hints 플래그로 실행하면 볼 수 있습니다.[/dim]")
 
         console.print("\n" + "-" * 80)
         console.print(
             "[bold]별도 터미널에서 작업을 수행하세요. 완료되면 여기로 돌아오세요.[/bold]"
         )
         console.print("-" * 80 + "\n")
+
+    def check_context(self, question: dict) -> bool:
+        """현재 kubectl context가 문제에서 요구하는 context인지 확인"""
+        required_context = question.get("context")
+        if not required_context:
+            # Context가 지정되지 않은 문제는 검사하지 않음
+            return True
+
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["kubectl", "config", "current-context"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            current_context = result.stdout.strip()
+
+            if current_context != required_context:
+                console.print(f"\n[bold red]⚠️  Context 오류![/bold red]")
+                console.print(f"  현재 Context: [yellow]{current_context}[/yellow]")
+                console.print(f"  필요한 Context: [green]{required_context}[/green]")
+                console.print(f"\n  [bold]다음 명령어를 실행하세요:[/bold]")
+                console.print(f"  [cyan]kubectl config use-context {required_context}[/cyan]\n")
+                self.context_errors += 1
+                return False
+
+            return True
+
+        except Exception as e:
+            console.print(f"[yellow]⚠️  Context 확인 실패: {str(e)}[/yellow]")
+            return True  # 확인 실패 시 진행 허용
 
     def show_timer(self):
         """타이머 표시"""
@@ -188,6 +246,11 @@ class CKASimulator:
                 break
 
             question = self.questions[self.current_question_idx]
+
+            # Context 확인 (실전 모드나 hard 모드에서)
+            if not self.practice_mode or self.hard_mode:
+                self.check_context(question)
+
             self.show_question(question)
             self.show_timer()
 
@@ -260,6 +323,9 @@ class CKASimulator:
         exam_info = {
             "type": self.exam_type,
             "practice_mode": self.practice_mode,
+            "hard_mode": self.hard_mode,
+            "show_hints": self.show_hints,
+            "context_errors": self.context_errors,
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
             "elapsed_time": elapsed_str,
@@ -300,6 +366,16 @@ class CKASimulator:
     help="연습 모드 (타이머 없음)",
 )
 @click.option(
+    "--hints",
+    is_flag=True,
+    help="힌트 표시 모드 (학습용)",
+)
+@click.option(
+    "--hard",
+    is_flag=True,
+    help="🔥 HARD MODE (힌트 완전 제거, 실전 난이도)",
+)
+@click.option(
     "--yes",
     "-y",
     is_flag=True,
@@ -311,7 +387,7 @@ class CKASimulator:
     is_flag=True,
     help="문제 목록만 표시하고 종료 (클러스터 불필요)",
 )
-def main(exam_type, practice, yes, list_only):
+def main(exam_type, practice, hints, hard, yes, list_only):
     """
     CKA 시험 시뮬레이터
 
@@ -321,8 +397,20 @@ def main(exam_type, practice, yes, list_only):
         # 결과 디렉토리 생성
         os.makedirs("results", exist_ok=True)
 
+        # hard 모드와 hints 모드는 동시에 사용 불가
+        if hard and hints:
+            console.print("[bold red]❌ --hard와 --hints는 동시에 사용할 수 없습니다.[/bold red]")
+            console.print("[yellow]--hard: 힌트 완전 제거 (실전 모드)[/yellow]")
+            console.print("[yellow]--hints: 힌트 표시 (학습 모드)[/yellow]")
+            sys.exit(1)
+
         # 시뮬레이터 생성
-        simulator = CKASimulator(exam_type=exam_type, practice_mode=practice)
+        simulator = CKASimulator(
+            exam_type=exam_type,
+            practice_mode=practice,
+            show_hints=hints,
+            hard_mode=hard
+        )
         simulator.auto_yes = yes  # 자동 확인 모드 설정
 
         # 문제 목록만 보기 모드

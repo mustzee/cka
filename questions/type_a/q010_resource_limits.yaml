@@ -1,119 +1,47 @@
-id: "A010"
-title: "리소스 요청 및 제한 설정"
-domain: "Workloads & Scheduling"
-difficulty: "easy"
+id: A010
+title: 리소스 요청 및 제한 설정
+domain: Workloads & Scheduling
+difficulty: easy
 weight: 4
 time_estimate: 6
+description: 'Context: kubectl config use-context cluster1
 
-description: |
-  Context: kubectl config use-context cluster1
 
   Pod의 리소스 사용량을 제한하여 클러스터 안정성을 보장해야 합니다.
 
-task: |
-  다음 요구사항을 만족하는 Pod를 생성하세요:
-
-  - 이름: resource-limited-pod
-  - 네임스페이스: default
-  - 이미지: nginx:latest
-  - 리소스 요청:
-    * CPU: 100m
-    * 메모리: 128Mi
-  - 리소스 제한:
-    * CPU: 200m
-    * 메모리: 256Mi
-
+  '
+task: "다음 요구사항을 만족하는 Pod를 생성하세요:\n\n- 이름: resource-limited-pod\n- 네임스페이스: default\n\
+  - 이미지: nginx:latest\n- 리소스 요청:\n  * CPU: 100m\n  * 메모리: 128Mi\n- 리소스 제한:\n  * CPU:\
+  \ 200m\n  * 메모리: 256Mi\n"
 hints:
-  - "resources.requests와 resources.limits 사용"
-  - "CPU는 밀리코어(m) 단위, 메모리는 Mi/Gi 단위"
-
+- resources.requests와 resources.limits 사용
+- CPU는 밀리코어(m) 단위, 메모리는 Mi/Gi 단위
 validation:
   checks:
-    - resource: "pod"
-      name: "resource-limited-pod"
-      namespace: "default"
-      conditions:
-        - field: "spec.containers[0].resources.requests.cpu"
-          value: "100m"
-        - field: "spec.containers[0].resources.limits.memory"
-          value: "256Mi"
-
-solution: |
-  해결 방법:
-
-  ```bash
-  # Pod 생성
-  cat <<EOF | kubectl apply -f -
-  apiVersion: v1
-  kind: Pod
-  metadata:
+  - resource: pod
     name: resource-limited-pod
     namespace: default
-  spec:
-    containers:
-    - name: nginx
-      image: nginx:latest
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 200m
-          memory: 256Mi
-  EOF
-
-  # 확인
-  kubectl get pod resource-limited-pod
-  kubectl describe pod resource-limited-pod | grep -A 5 "Limits:"
-
-  # 리소스 사용량 확인 (metrics-server 필요)
-  kubectl top pod resource-limited-pod
-  ```
-
-explanation: |
-  리소스 요청과 제한을 통한 리소스 관리를 평가합니다.
-
-  Requests vs Limits:
-
-  Requests (요청):
-  - 스케줄러가 보장하는 최소 리소스
-  - Pod 배치 결정 기준
-  - 노드의 가용 리소스보다 작아야 스케줄링
-
-  Limits (제한):
-  - Pod가 사용 가능한 최대 리소스
-  - 초과 시:
-    * CPU: Throttling (제한)
-    * Memory: OOMKilled (종료)
-
-  QoS 클래스:
-  1. Guaranteed:
-     - 모든 컨테이너에 requests = limits
-     - 가장 높은 우선순위
-
-  2. Burstable:
-     - requests < limits 또는 일부만 설정
-     - 중간 우선순위
-
-  3. BestEffort:
-     - requests, limits 미설정
-     - 가장 낮은 우선순위
-
-  CPU 단위:
-  - 1 = 1 vCPU/Core
-  - 100m = 0.1 CPU
-  - 1000m = 1 CPU
-
-  메모리 단위:
-  - Ki, Mi, Gi (1024 기반)
-  - K, M, G (1000 기반)
-
-  LimitRange:
-  - 네임스페이스별 기본값 설정
-  - 최소/최대 제한
-
-  ResourceQuota:
-  - 네임스페이스별 총량 제한
-
+    conditions:
+    - field: spec.containers[0].resources.requests.cpu
+      value: 100m
+    - field: spec.containers[0].resources.limits.memory
+      value: 256Mi
+solution: "해결 방법:\n\n```bash\n# Pod 생성\ncat <<EOF | kubectl apply -f -\napiVersion:\
+  \ v1\nkind: Pod\nmetadata:\n  name: resource-limited-pod\n  namespace: default\n\
+  spec:\n  containers:\n  - name: nginx\n    image: nginx:latest\n    resources:\n\
+  \      requests:\n        cpu: 100m\n        memory: 128Mi\n      limits:\n    \
+  \    cpu: 200m\n        memory: 256Mi\nEOF\n\n# 확인\nkubectl get pod resource-limited-pod\n\
+  kubectl describe pod resource-limited-pod | grep -A 5 \"Limits:\"\n\n# 리소스 사용량 확인\
+  \ (metrics-server 필요)\nkubectl top pod resource-limited-pod\n```\n"
+explanation: "리소스 요청과 제한을 통한 리소스 관리를 평가합니다.\n\nRequests vs Limits:\n\nRequests (요청):\n\
+  - 스케줄러가 보장하는 최소 리소스\n- Pod 배치 결정 기준\n- 노드의 가용 리소스보다 작아야 스케줄링\n\nLimits (제한):\n-\
+  \ Pod가 사용 가능한 최대 리소스\n- 초과 시:\n  * CPU: Throttling (제한)\n  * Memory: OOMKilled (종료)\n\
+  \nQoS 클래스:\n1. Guaranteed:\n   - 모든 컨테이너에 requests = limits\n   - 가장 높은 우선순위\n\n\
+  2. Burstable:\n   - requests < limits 또는 일부만 설정\n   - 중간 우선순위\n\n3. BestEffort:\n\
+  \   - requests, limits 미설정\n   - 가장 낮은 우선순위\n\nCPU 단위:\n- 1 = 1 vCPU/Core\n- 100m\
+  \ = 0.1 CPU\n- 1000m = 1 CPU\n\n메모리 단위:\n- Ki, Mi, Gi (1024 기반)\n- K, M, G (1000\
+  \ 기반)\n\nLimitRange:\n- 네임스페이스별 기본값 설정\n- 최소/최대 제한\n\nResourceQuota:\n- 네임스페이스별\
+  \ 총량 제한\n"
 references:
-  - "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/"
+- https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+context: cluster4

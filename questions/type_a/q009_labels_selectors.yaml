@@ -1,109 +1,51 @@
-id: "A009"
-title: "레이블과 셀렉터를 사용한 리소스 관리"
-domain: "Workloads & Scheduling"
-difficulty: "easy"
+id: A009
+title: 레이블과 셀렉터를 사용한 리소스 관리
+domain: Workloads & Scheduling
+difficulty: easy
 weight: 3
 time_estimate: 5
+description: 'Context: kubectl config use-context cluster1
 
-description: |
-  Context: kubectl config use-context cluster1
 
   레이블을 사용하여 리소스를 효과적으로 관리해야 합니다.
 
-task: |
-  다음 작업을 수행하세요:
-
-  1. 3개의 Pod 생성:
-     - 이름: frontend-1, frontend-2, backend-1
-     - 네임스페이스: default
-     - 이미지: nginx:latest
-     - frontend Pod에는 tier=frontend 레이블
-     - backend Pod에는 tier=backend 레이블
-     - 모든 Pod에 env=production 레이블 추가
-
-  2. tier=frontend인 모든 Pod 이름을 /tmp/frontend-pods.txt에 저장
-
+  '
+task: "다음 작업을 수행하세요:\n\n1. 3개의 Pod 생성:\n   - 이름: frontend-1, frontend-2, backend-1\n\
+  \   - 네임스페이스: default\n   - 이미지: nginx:latest\n   - frontend Pod에는 tier=frontend\
+  \ 레이블\n   - backend Pod에는 tier=backend 레이블\n   - 모든 Pod에 env=production 레이블 추가\n\
+  \n2. tier=frontend인 모든 Pod 이름을 /tmp/frontend-pods.txt에 저장\n"
 hints:
-  - "kubectl run 명령어로 Pod 생성 가능"
-  - "-l 옵션으로 레이블 셀렉터 사용"
-  - "kubectl get pods -l tier=frontend"
-
+- kubectl run 명령어로 Pod 생성 가능
+- -l 옵션으로 레이블 셀렉터 사용
+- kubectl get pods -l tier=frontend
 validation:
   checks:
-    - resource: "pod"
-      name: "frontend-1"
-      namespace: "default"
-
-    - resource: "pod"
-      name: "frontend-2"
-      namespace: "default"
-
-    - resource: "pod"
-      name: "backend-1"
-      namespace: "default"
-
-    - file: "/tmp/frontend-pods.txt"
-      exists: true
-
-solution: |
-  해결 방법:
-
-  ```bash
-  # Frontend Pod 생성
-  kubectl run frontend-1 --image=nginx:latest \
-    --labels=tier=frontend,env=production
-
-  kubectl run frontend-2 --image=nginx:latest \
-    --labels=tier=frontend,env=production
-
-  # Backend Pod 생성
-  kubectl run backend-1 --image=nginx:latest \
-    --labels=tier=backend,env=production
-
-  # Frontend Pod 이름 저장
-  kubectl get pods -l tier=frontend \
-    -o jsonpath='{.items[*].metadata.name}' > /tmp/frontend-pods.txt
-
-  # 또는
-  kubectl get pods -l tier=frontend --no-headers \
-    -o custom-columns=":metadata.name" > /tmp/frontend-pods.txt
-
-  # 확인
-  kubectl get pods --show-labels
-  kubectl get pods -l tier=frontend
-  cat /tmp/frontend-pods.txt
-  ```
-
-explanation: |
-  레이블과 셀렉터를 통한 리소스 관리를 평가합니다.
-
-  레이블:
-  - 키-값 쌍으로 리소스 분류
-  - 최대 63자
-  - 여러 레이블 조합 가능
-
-  셀렉터 타입:
-  1. Equality-based:
-     - tier=frontend
-     - env!=production
-
-  2. Set-based:
-     - tier in (frontend, backend)
-     - tier notin (cache)
-     - env (키 존재)
-     - !env (키 미존재)
-
-  실무 사용:
-  - Service 셀렉터
-  - Deployment 매칭
-  - Node 셀렉터
-  - 리소스 필터링 및 조회
-
-  권장 레이블:
-  - app: 애플리케이션 이름
-  - tier: 계층 (frontend, backend, cache)
-  - env: 환경 (dev, staging, prod)
-  - version: 버전
-
+  - resource: pod
+    name: frontend-1
+    namespace: default
+  - resource: pod
+    name: frontend-2
+    namespace: default
+  - resource: pod
+    name: backend-1
+    namespace: default
+  - file: /tmp/frontend-pods.txt
+    exists: true
+solution: "해결 방법:\n\n```bash\n# Frontend Pod 생성\nkubectl run frontend-1 --image=nginx:latest\
+  \ \\\n  --labels=tier=frontend,env=production\n\nkubectl run frontend-2 --image=nginx:latest\
+  \ \\\n  --labels=tier=frontend,env=production\n\n# Backend Pod 생성\nkubectl run backend-1\
+  \ --image=nginx:latest \\\n  --labels=tier=backend,env=production\n\n# Frontend\
+  \ Pod 이름 저장\nkubectl get pods -l tier=frontend \\\n  -o jsonpath='{.items[*].metadata.name}'\
+  \ > /tmp/frontend-pods.txt\n\n# 또는\nkubectl get pods -l tier=frontend --no-headers\
+  \ \\\n  -o custom-columns=\":metadata.name\" > /tmp/frontend-pods.txt\n\n# 확인\n\
+  kubectl get pods --show-labels\nkubectl get pods -l tier=frontend\ncat /tmp/frontend-pods.txt\n\
+  ```\n"
+explanation: "레이블과 셀렉터를 통한 리소스 관리를 평가합니다.\n\n레이블:\n- 키-값 쌍으로 리소스 분류\n- 최대 63자\n- 여러\
+  \ 레이블 조합 가능\n\n셀렉터 타입:\n1. Equality-based:\n   - tier=frontend\n   - env!=production\n\
+  \n2. Set-based:\n   - tier in (frontend, backend)\n   - tier notin (cache)\n   -\
+  \ env (키 존재)\n   - !env (키 미존재)\n\n실무 사용:\n- Service 셀렉터\n- Deployment 매칭\n- Node\
+  \ 셀렉터\n- 리소스 필터링 및 조회\n\n권장 레이블:\n- app: 애플리케이션 이름\n- tier: 계층 (frontend, backend,\
+  \ cache)\n- env: 환경 (dev, staging, prod)\n- version: 버전\n"
 references:
-  - "https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/"
+- https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+context: cluster3

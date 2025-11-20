@@ -1,184 +1,83 @@
-id: "A015"
-title: "Init Container를 사용한 초기화"
-domain: "Workloads & Scheduling"
-difficulty: "medium"
+id: A015
+title: Init Container를 사용한 초기화
+domain: Workloads & Scheduling
+difficulty: medium
 weight: 5
 time_estimate: 8
+description: 'Context: kubectl config use-context cluster1
 
-description: |
-  Context: kubectl config use-context cluster1
 
   애플리케이션 컨테이너가 시작되기 전에 초기화 작업을 수행해야 합니다.
 
-task: |
-  다음 요구사항을 만족하는 Pod를 생성하세요:
+  '
+task: '다음 요구사항을 만족하는 Pod를 생성하세요:
+
 
   - 이름: app-with-init
+
   - 네임스페이스: default
 
+
   Init Container:
+
   - 이름: init-setup
+
   - 이미지: busybox:latest
+
   - 명령어: ["sh", "-c", "echo Initialization complete > /work-dir/initialized.txt"]
+
   - 볼륨 마운트: /work-dir (emptyDir)
 
+
   Main Container:
+
   - 이름: app
+
   - 이미지: nginx:latest
+
   - 볼륨 마운트: /usr/share/nginx/html (emptyDir)
 
+  '
 hints:
-  - "initContainers 필드 사용"
-  - "init container는 순차적으로 실행"
-  - "모든 init container 성공 후 main container 시작"
-
+- initContainers 필드 사용
+- init container는 순차적으로 실행
+- 모든 init container 성공 후 main container 시작
 validation:
   checks:
-    - resource: "pod"
-      name: "app-with-init"
-      namespace: "default"
-      conditions:
-        - type: "Ready"
-          status: "True"
-
-solution: |
-  해결 방법:
-
-  ```bash
-  # Pod 생성
-  cat <<EOF | kubectl apply -f -
-  apiVersion: v1
-  kind: Pod
-  metadata:
+  - resource: pod
     name: app-with-init
     namespace: default
-  spec:
-    initContainers:
-    - name: init-setup
-      image: busybox:latest
-      command:
-      - sh
-      - -c
-      - echo Initialization complete > /work-dir/initialized.txt
-      volumeMounts:
-      - name: workdir
-        mountPath: /work-dir
-    containers:
-    - name: app
-      image: nginx:latest
-      volumeMounts:
-      - name: workdir
-        mountPath: /usr/share/nginx/html
-    volumes:
-    - name: workdir
-      emptyDir: {}
-  EOF
-
-  # 확인
-  kubectl get pod app-with-init
-  kubectl describe pod app-with-init
-
-  # Init Container 로그 확인
-  kubectl logs app-with-init -c init-setup
-
-  # 파일 확인
-  kubectl exec app-with-init -- cat /usr/share/nginx/html/initialized.txt
-  ```
-
-explanation: |
-  Init Container를 사용한 초기화 작업을 평가합니다.
-
-  Init Container란:
-  - 메인 컨테이너 시작 전 실행
-  - 초기화, 설정, 준비 작업 수행
-  - 순차적으로 실행 (하나씩)
-  - 모두 성공해야 메인 컨테이너 시작
-
-  vs 메인 컨테이너:
-  1. 실행 시점:
-     - Init: Pod 시작 시 한 번
-     - Main: 계속 실행
-
-  2. 순서:
-     - Init: 순차적
-     - Main: 병렬
-
-  3. 재시작:
-     - Init: 실패 시 Pod 재시작
-     - Main: restartPolicy 따름
-
-  사용 사례:
-
-  1. 의존성 대기:
-  ```yaml
-  initContainers:
-  - name: wait-for-db
-    image: busybox
-    command:
-    - sh
-    - -c
-    - until nslookup db-service; do sleep 2; done
-  ```
-
-  2. 설정 파일 생성:
-  ```yaml
-  initContainers:
-  - name: config-generator
-    image: busybox
-    command:
-    - sh
-    - -c
-    - |
-      cat > /config/app.conf <<EOF
-      server_name=$(hostname)
-      EOF
-    volumeMounts:
-    - name: config
-      mountPath: /config
-  ```
-
-  3. 데이터 다운로드:
-  ```yaml
-  initContainers:
-  - name: download-data
-    image: curlimages/curl
-    command:
-    - sh
-    - -c
-    - curl -o /data/file.tar.gz https://example.com/file.tar.gz
-    volumeMounts:
-    - name: data
-      mountPath: /data
-  ```
-
-  4. 권한 설정:
-  ```yaml
-  initContainers:
-  - name: set-permissions
-    image: busybox
-    command:
-    - sh
-    - -c
-    - chmod 777 /data
-    volumeMounts:
-    - name: data
-      mountPath: /data
-  ```
-
-  실무 패턴:
-  - Git clone으로 코드 가져오기
-  - 데이터베이스 마이그레이션
-  - SSL 인증서 생성
-  - 환경 설정 검증
-
-  디버깅:
-  ```bash
-  # Init Container 상태 확인
-  kubectl get pod <pod-name> -o jsonpath='{.status.initContainerStatuses[*].state}'
-
-  # Init Container 로그
-  kubectl logs <pod-name> -c <init-container-name>
-  ```
-
+    conditions:
+    - type: Ready
+      status: 'True'
+solution: "해결 방법:\n\n```bash\n# Pod 생성\ncat <<EOF | kubectl apply -f -\napiVersion:\
+  \ v1\nkind: Pod\nmetadata:\n  name: app-with-init\n  namespace: default\nspec:\n\
+  \  initContainers:\n  - name: init-setup\n    image: busybox:latest\n    command:\n\
+  \    - sh\n    - -c\n    - echo Initialization complete > /work-dir/initialized.txt\n\
+  \    volumeMounts:\n    - name: workdir\n      mountPath: /work-dir\n  containers:\n\
+  \  - name: app\n    image: nginx:latest\n    volumeMounts:\n    - name: workdir\n\
+  \      mountPath: /usr/share/nginx/html\n  volumes:\n  - name: workdir\n    emptyDir:\
+  \ {}\nEOF\n\n# 확인\nkubectl get pod app-with-init\nkubectl describe pod app-with-init\n\
+  \n# Init Container 로그 확인\nkubectl logs app-with-init -c init-setup\n\n# 파일 확인\n\
+  kubectl exec app-with-init -- cat /usr/share/nginx/html/initialized.txt\n```\n"
+explanation: "Init Container를 사용한 초기화 작업을 평가합니다.\n\nInit Container란:\n- 메인 컨테이너 시작\
+  \ 전 실행\n- 초기화, 설정, 준비 작업 수행\n- 순차적으로 실행 (하나씩)\n- 모두 성공해야 메인 컨테이너 시작\n\nvs 메인 컨테이너:\n\
+  1. 실행 시점:\n   - Init: Pod 시작 시 한 번\n   - Main: 계속 실행\n\n2. 순서:\n   - Init: 순차적\n\
+  \   - Main: 병렬\n\n3. 재시작:\n   - Init: 실패 시 Pod 재시작\n   - Main: restartPolicy 따름\n\
+  \n사용 사례:\n\n1. 의존성 대기:\n```yaml\ninitContainers:\n- name: wait-for-db\n  image:\
+  \ busybox\n  command:\n  - sh\n  - -c\n  - until nslookup db-service; do sleep 2;\
+  \ done\n```\n\n2. 설정 파일 생성:\n```yaml\ninitContainers:\n- name: config-generator\n\
+  \  image: busybox\n  command:\n  - sh\n  - -c\n  - |\n    cat > /config/app.conf\
+  \ <<EOF\n    server_name=$(hostname)\n    EOF\n  volumeMounts:\n  - name: config\n\
+  \    mountPath: /config\n```\n\n3. 데이터 다운로드:\n```yaml\ninitContainers:\n- name:\
+  \ download-data\n  image: curlimages/curl\n  command:\n  - sh\n  - -c\n  - curl\
+  \ -o /data/file.tar.gz https://example.com/file.tar.gz\n  volumeMounts:\n  - name:\
+  \ data\n    mountPath: /data\n```\n\n4. 권한 설정:\n```yaml\ninitContainers:\n- name:\
+  \ set-permissions\n  image: busybox\n  command:\n  - sh\n  - -c\n  - chmod 777 /data\n\
+  \  volumeMounts:\n  - name: data\n    mountPath: /data\n```\n\n실무 패턴:\n- Git clone으로\
+  \ 코드 가져오기\n- 데이터베이스 마이그레이션\n- SSL 인증서 생성\n- 환경 설정 검증\n\n디버깅:\n```bash\n# Init Container\
+  \ 상태 확인\nkubectl get pod <pod-name> -o jsonpath='{.status.initContainerStatuses[*].state}'\n\
+  \n# Init Container 로그\nkubectl logs <pod-name> -c <init-container-name>\n```\n"
 references:
-  - "https://kubernetes.io/docs/concepts/workloads/pods/init-containers/"
+- https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
+context: cluster3

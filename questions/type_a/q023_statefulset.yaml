@@ -1,250 +1,117 @@
-id: "A023"
-title: "StatefulSet을 사용한 상태 유지 애플리케이션"
-domain: "Storage"
-difficulty: "medium"
+id: A023
+title: StatefulSet을 사용한 상태 유지 애플리케이션
+domain: Storage
+difficulty: medium
 weight: 6
 time_estimate: 10
+description: 'Context: kubectl config use-context cluster1
 
-description: |
-  Context: kubectl config use-context cluster1
 
   데이터베이스와 같은 상태 유지 애플리케이션을 배포해야 합니다.
+
   각 Pod마다 안정적인 네트워크 ID와 영구 스토리지가 필요합니다.
 
-task: |
-  다음 요구사항을 만족하는 StatefulSet을 생성하세요:
+  '
+task: '다음 요구사항을 만족하는 StatefulSet을 생성하세요:
+
 
   - 이름: mysql-statefulset
+
   - 네임스페이스: default
+
   - 레플리카: 3
+
   - 컨테이너 이미지: mysql:5.7
+
   - 환경변수: MYSQL_ROOT_PASSWORD=rootpassword
 
+
   Service:
+
   - 이름: mysql-headless
+
   - 타입: ClusterIP
+
   - clusterIP: None (Headless Service)
+
   - 포트: 3306
 
+
   VolumeClaimTemplate:
+
   - 이름: mysql-storage
+
   - 스토리지 클래스: standard (또는 hostpath)
+
   - 크기: 1Gi
+
   - 접근 모드: ReadWriteOnce
 
+  '
 hints:
-  - "StatefulSet은 안정적인 Pod 이름 보장"
-  - "Headless Service로 각 Pod DNS 접근"
-  - "volumeClaimTemplates로 PVC 자동 생성"
-  - "Pod: mysql-statefulset-0, mysql-statefulset-1, mysql-statefulset-2"
-
+- StatefulSet은 안정적인 Pod 이름 보장
+- Headless Service로 각 Pod DNS 접근
+- volumeClaimTemplates로 PVC 자동 생성
+- 'Pod: mysql-statefulset-0, mysql-statefulset-1, mysql-statefulset-2'
 validation:
   checks:
-    - resource: "statefulset"
-      name: "mysql-statefulset"
-      namespace: "default"
-
-    - resource: "service"
-      name: "mysql-headless"
-      namespace: "default"
-
-    - custom_check: |
-        # PVC가 3개 생성되었는지 확인
-        PVC_COUNT=$(kubectl get pvc -n default -l app=mysql | grep -c mysql-storage || echo 0)
-        if [ "$PVC_COUNT" -ge 3 ]; then
-          echo "PASS"
-        else
-          echo "FAIL: Expected 3 PVCs, found $PVC_COUNT"
-        fi
-
-solution: |
-  StatefulSet 생성:
-
-  ```bash
-  # 1. Headless Service 생성
-  cat <<EOF | kubectl apply -f -
-  apiVersion: v1
-  kind: Service
-  metadata:
-    name: mysql-headless
-    namespace: default
-  spec:
-    clusterIP: None  # Headless Service
-    selector:
-      app: mysql
-    ports:
-    - port: 3306
-      targetPort: 3306
-      name: mysql
-  EOF
-
-  # 2. StatefulSet 생성
-  cat <<EOF | kubectl apply -f -
-  apiVersion: apps/v1
-  kind: StatefulSet
-  metadata:
+  - resource: statefulset
     name: mysql-statefulset
     namespace: default
-  spec:
-    serviceName: mysql-headless
-    replicas: 3
-    selector:
-      matchLabels:
-        app: mysql
-    template:
-      metadata:
-        labels:
-          app: mysql
-      spec:
-        containers:
-        - name: mysql
-          image: mysql:5.7
-          ports:
-          - containerPort: 3306
-            name: mysql
-          env:
-          - name: MYSQL_ROOT_PASSWORD
-            value: rootpassword
-          volumeMounts:
-          - name: mysql-storage
-            mountPath: /var/lib/mysql
-    volumeClaimTemplates:
-    - metadata:
-        name: mysql-storage
-      spec:
-        accessModes:
-        - ReadWriteOnce
-        storageClassName: standard  # 또는 hostpath
-        resources:
-          requests:
-            storage: 1Gi
-  EOF
-
-  # 3. 확인
-  kubectl get statefulset mysql-statefulset
-  kubectl get pods -l app=mysql
-  kubectl get pvc
-  kubectl get svc mysql-headless
-
-  # Pod 이름 패턴 확인
-  # mysql-statefulset-0
-  # mysql-statefulset-1
-  # mysql-statefulset-2
-
-  # 4. DNS 테스트
-  # 각 Pod에 안정적인 DNS 이름 부여됨
-  # mysql-statefulset-0.mysql-headless.default.svc.cluster.local
-  # mysql-statefulset-1.mysql-headless.default.svc.cluster.local
-  # mysql-statefulset-2.mysql-headless.default.svc.cluster.local
-
-  # 5. StatefulSet 상태 확인
-  kubectl describe statefulset mysql-statefulset
-
-  # 6. PVC 확인
-  kubectl get pvc -l app=mysql
-  # mysql-storage-mysql-statefulset-0
-  # mysql-storage-mysql-statefulset-1
-  # mysql-storage-mysql-statefulset-2
-
-  # 7. 특정 Pod에 연결 테스트
-  kubectl exec -it mysql-statefulset-0 -- mysql -uroot -prootpassword -e "SELECT 1"
-  ```
-
-explanation: |
-  StatefulSet을 사용한 상태 유지 애플리케이션 배포를 평가합니다.
-
-  StatefulSet vs Deployment:
-
-  StatefulSet 특징:
-  1. 안정적인 Pod 이름:
-     - Pod 이름: <statefulset-name>-<ordinal>
-     - mysql-statefulset-0, mysql-statefulset-1, mysql-statefulset-2
-     - 재시작해도 이름 유지
-
-  2. 안정적인 네트워크 ID:
-     - Headless Service 필요 (clusterIP: None)
-     - 각 Pod에 고유 DNS:
-       <pod-name>.<service-name>.<namespace>.svc.cluster.local
-
-  3. 순서 보장:
-     - 생성: 0 → 1 → 2 (순차적)
-     - 삭제: 2 → 1 → 0 (역순)
-     - Pod-0이 Ready 될 때까지 Pod-1 시작 안 함
-
-  4. 영구 스토리지:
-     - volumeClaimTemplates 사용
-     - 각 Pod마다 PVC 자동 생성
-     - Pod 삭제해도 PVC 유지
-
-  Headless Service:
-  - clusterIP: None으로 설정
-  - 각 Pod에 직접 접근 가능한 DNS 제공
-  - 로드밸런싱 없음
-  - StatefulSet에 필수
-
-  VolumeClaimTemplate:
-  - StatefulSet의 각 Pod마다 PVC 자동 생성
-  - PVC 이름: <template-name>-<statefulset-name>-<ordinal>
-  - 예: mysql-storage-mysql-statefulset-0
-
-  사용 사례:
-  1. 데이터베이스:
-     - MySQL, PostgreSQL, MongoDB
-     - 각 인스턴스마다 고유 데이터
-     - 안정적인 네트워크 ID 필요
-
-  2. 분산 시스템:
-     - Kafka, ZooKeeper, etcd
-     - 클러스터 멤버 간 통신
-     - 순서 보장 중요
-
-  3. 캐시 클러스터:
-     - Redis Cluster
-     - 각 노드 고유 데이터 파티션
-
-  실무 패턴:
-  ```yaml
-  # Master-Slave 구성
-  - Pod-0: Master
-  - Pod-1, Pod-2: Slaves
-
-  # Init Container로 역할 결정
-  initContainers:
-  - name: init-mysql
-    image: mysql:5.7
-    command:
-    - bash
-    - "-c"
-    - |
-      [[ $(hostname) =~ -([0-9]+)$ ]] || exit 1
-      ordinal=${BASH_REMATCH[1]}
-      if [[ $ordinal -eq 0 ]]; then
-        echo "This is master"
-      else
-        echo "This is slave"
-      fi
-  ```
-
-  주의사항:
-  - StatefulSet 삭제 시 PVC는 자동 삭제되지 않음
-  - 수동으로 PVC 정리 필요
-  - 스케일 다운 시 데이터 백업 확인
-
-  디버깅:
-  ```bash
-  # StatefulSet 이벤트
-  kubectl describe statefulset <name>
-
-  # Pod 순서 확인
-  kubectl get pods -l app=<label> -w
-
-  # PVC 상태
-  kubectl get pvc -l app=<label>
-
-  # DNS 확인
-  kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup <pod-name>.<service-name>
-  ```
-
+  - resource: service
+    name: mysql-headless
+    namespace: default
+  - custom_check: "# PVC가 3개 생성되었는지 확인\nPVC_COUNT=$(kubectl get pvc -n default -l\
+      \ app=mysql | grep -c mysql-storage || echo 0)\nif [ \"$PVC_COUNT\" -ge 3 ];\
+      \ then\n  echo \"PASS\"\nelse\n  echo \"FAIL: Expected 3 PVCs, found $PVC_COUNT\"\
+      \nfi\n"
+solution: "StatefulSet 생성:\n\n```bash\n# 1. Headless Service 생성\ncat <<EOF | kubectl\
+  \ apply -f -\napiVersion: v1\nkind: Service\nmetadata:\n  name: mysql-headless\n\
+  \  namespace: default\nspec:\n  clusterIP: None  # Headless Service\n  selector:\n\
+  \    app: mysql\n  ports:\n  - port: 3306\n    targetPort: 3306\n    name: mysql\n\
+  EOF\n\n# 2. StatefulSet 생성\ncat <<EOF | kubectl apply -f -\napiVersion: apps/v1\n\
+  kind: StatefulSet\nmetadata:\n  name: mysql-statefulset\n  namespace: default\n\
+  spec:\n  serviceName: mysql-headless\n  replicas: 3\n  selector:\n    matchLabels:\n\
+  \      app: mysql\n  template:\n    metadata:\n      labels:\n        app: mysql\n\
+  \    spec:\n      containers:\n      - name: mysql\n        image: mysql:5.7\n \
+  \       ports:\n        - containerPort: 3306\n          name: mysql\n        env:\n\
+  \        - name: MYSQL_ROOT_PASSWORD\n          value: rootpassword\n        volumeMounts:\n\
+  \        - name: mysql-storage\n          mountPath: /var/lib/mysql\n  volumeClaimTemplates:\n\
+  \  - metadata:\n      name: mysql-storage\n    spec:\n      accessModes:\n     \
+  \ - ReadWriteOnce\n      storageClassName: standard  # 또는 hostpath\n      resources:\n\
+  \        requests:\n          storage: 1Gi\nEOF\n\n# 3. 확인\nkubectl get statefulset\
+  \ mysql-statefulset\nkubectl get pods -l app=mysql\nkubectl get pvc\nkubectl get\
+  \ svc mysql-headless\n\n# Pod 이름 패턴 확인\n# mysql-statefulset-0\n# mysql-statefulset-1\n\
+  # mysql-statefulset-2\n\n# 4. DNS 테스트\n# 각 Pod에 안정적인 DNS 이름 부여됨\n# mysql-statefulset-0.mysql-headless.default.svc.cluster.local\n\
+  # mysql-statefulset-1.mysql-headless.default.svc.cluster.local\n# mysql-statefulset-2.mysql-headless.default.svc.cluster.local\n\
+  \n# 5. StatefulSet 상태 확인\nkubectl describe statefulset mysql-statefulset\n\n# 6.\
+  \ PVC 확인\nkubectl get pvc -l app=mysql\n# mysql-storage-mysql-statefulset-0\n# mysql-storage-mysql-statefulset-1\n\
+  # mysql-storage-mysql-statefulset-2\n\n# 7. 특정 Pod에 연결 테스트\nkubectl exec -it mysql-statefulset-0\
+  \ -- mysql -uroot -prootpassword -e \"SELECT 1\"\n```\n"
+explanation: "StatefulSet을 사용한 상태 유지 애플리케이션 배포를 평가합니다.\n\nStatefulSet vs Deployment:\n\
+  \nStatefulSet 특징:\n1. 안정적인 Pod 이름:\n   - Pod 이름: <statefulset-name>-<ordinal>\n\
+  \   - mysql-statefulset-0, mysql-statefulset-1, mysql-statefulset-2\n   - 재시작해도\
+  \ 이름 유지\n\n2. 안정적인 네트워크 ID:\n   - Headless Service 필요 (clusterIP: None)\n   - 각\
+  \ Pod에 고유 DNS:\n     <pod-name>.<service-name>.<namespace>.svc.cluster.local\n\n\
+  3. 순서 보장:\n   - 생성: 0 → 1 → 2 (순차적)\n   - 삭제: 2 → 1 → 0 (역순)\n   - Pod-0이 Ready\
+  \ 될 때까지 Pod-1 시작 안 함\n\n4. 영구 스토리지:\n   - volumeClaimTemplates 사용\n   - 각 Pod마다\
+  \ PVC 자동 생성\n   - Pod 삭제해도 PVC 유지\n\nHeadless Service:\n- clusterIP: None으로 설정\n\
+  - 각 Pod에 직접 접근 가능한 DNS 제공\n- 로드밸런싱 없음\n- StatefulSet에 필수\n\nVolumeClaimTemplate:\n\
+  - StatefulSet의 각 Pod마다 PVC 자동 생성\n- PVC 이름: <template-name>-<statefulset-name>-<ordinal>\n\
+  - 예: mysql-storage-mysql-statefulset-0\n\n사용 사례:\n1. 데이터베이스:\n   - MySQL, PostgreSQL,\
+  \ MongoDB\n   - 각 인스턴스마다 고유 데이터\n   - 안정적인 네트워크 ID 필요\n\n2. 분산 시스템:\n   - Kafka,\
+  \ ZooKeeper, etcd\n   - 클러스터 멤버 간 통신\n   - 순서 보장 중요\n\n3. 캐시 클러스터:\n   - Redis Cluster\n\
+  \   - 각 노드 고유 데이터 파티션\n\n실무 패턴:\n```yaml\n# Master-Slave 구성\n- Pod-0: Master\n-\
+  \ Pod-1, Pod-2: Slaves\n\n# Init Container로 역할 결정\ninitContainers:\n- name: init-mysql\n\
+  \  image: mysql:5.7\n  command:\n  - bash\n  - \"-c\"\n  - |\n    [[ $(hostname)\
+  \ =~ -([0-9]+)$ ]] || exit 1\n    ordinal=${BASH_REMATCH[1]}\n    if [[ $ordinal\
+  \ -eq 0 ]]; then\n      echo \"This is master\"\n    else\n      echo \"This is\
+  \ slave\"\n    fi\n```\n\n주의사항:\n- StatefulSet 삭제 시 PVC는 자동 삭제되지 않음\n- 수동으로 PVC\
+  \ 정리 필요\n- 스케일 다운 시 데이터 백업 확인\n\n디버깅:\n```bash\n# StatefulSet 이벤트\nkubectl describe\
+  \ statefulset <name>\n\n# Pod 순서 확인\nkubectl get pods -l app=<label> -w\n\n# PVC\
+  \ 상태\nkubectl get pvc -l app=<label>\n\n# DNS 확인\nkubectl run -it --rm debug --image=busybox\
+  \ --restart=Never -- nslookup <pod-name>.<service-name>\n```\n"
 references:
-  - "https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/"
-  - "https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/"
+- https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/
+- https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/
+context: cluster5

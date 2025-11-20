@@ -1,273 +1,324 @@
-id: "A021"
-title: "kubeadm을 사용한 클러스터 업그레이드"
-domain: "Cluster Architecture, Installation & Configuration"
-difficulty: "hard"
+id: A021
+title: kubeadm을 사용한 클러스터 업그레이드
+domain: Cluster Architecture, Installation & Configuration
+difficulty: hard
 weight: 12
 time_estimate: 25
+description: 'Context: kubectl config use-context cluster1
 
-description: |
-  Context: kubectl config use-context cluster1
 
   현재 클러스터를 최신 버전으로 업그레이드해야 합니다.
+
   Control plane 노드와 Worker 노드를 순차적으로 업그레이드하세요.
 
+
   현재 버전: v1.27.0
+
   목표 버전: v1.28.0
 
-task: |
-  다음 순서로 클러스터를 업그레이드하세요:
-
-  1. Control Plane 노드 업그레이드:
-     - kubeadm, kubelet, kubectl 업그레이드
-     - kubeadm upgrade apply
-     - kubelet과 kubectl 재시작
-
-  2. Worker 노드 업그레이드 (각 노드별로):
-     - 노드를 drain하여 Pod 제거
-     - kubeadm, kubelet, kubectl 업그레이드
-     - kubeadm upgrade node
-     - kubelet 재시작
-     - 노드 uncordon
-
-  3. 업그레이드 결과를 /tmp/cluster-upgrade.txt에 저장하세요
-
-  주의:
-  - SSH로 각 노드에 접속 가능 (ssh controlplane, ssh node01)
-  - 한 번에 하나의 노드만 업그레이드
-  - Pod 중단 시간 최소화
-
+  '
+task: "다음 순서로 클러스터를 업그레이드하세요:\n\n1. Control Plane 노드 업그레이드:\n   - kubeadm, kubelet,\
+  \ kubectl 업그레이드\n   - kubeadm upgrade apply\n   - kubelet과 kubectl 재시작\n\n2. Worker\
+  \ 노드 업그레이드 (각 노드별로):\n   - 노드를 drain하여 Pod 제거\n   - kubeadm, kubelet, kubectl 업그레이드\n\
+  \   - kubeadm upgrade node\n   - kubelet 재시작\n   - 노드 uncordon\n\n3. 업그레이드 결과를 /tmp/cluster-upgrade.txt에\
+  \ 저장하세요\n\n주의:\n- SSH로 각 노드에 접속 가능 (ssh controlplane, ssh node01)\n- 한 번에 하나의 노드만\
+  \ 업그레이드\n- Pod 중단 시간 최소화\n"
 hints:
-  - "kubeadm version으로 현재 버전 확인"
-  - "apt-cache madison kubeadm으로 사용 가능한 버전 확인"
-  - "kubectl drain으로 노드 비우기"
-  - "systemctl restart kubelet으로 kubelet 재시작"
-
+- kubeadm version으로 현재 버전 확인
+- apt-cache madison kubeadm으로 사용 가능한 버전 확인
+- kubectl drain으로 노드 비우기
+- systemctl restart kubelet으로 kubelet 재시작
 validation:
   checks:
-    - custom_check: |
-        # 클러스터 버전 확인
-        VERSION=$(kubectl version --short 2>/dev/null | grep Server | awk '{print $3}')
-        if [[ "$VERSION" == *"v1.28"* ]]; then
-          echo "PASS"
-        else
-          echo "FAIL: Cluster not upgraded to v1.28.x"
-        fi
+  - custom_check: "# 클러스터 버전 확인\nVERSION=$(kubectl version --short 2>/dev/null | grep\
+      \ Server | awk '{print $3}')\nif [[ \"$VERSION\" == *\"v1.28\"* ]]; then\n \
+      \ echo \"PASS\"\nelse\n  echo \"FAIL: Cluster not upgraded to v1.28.x\"\nfi\n"
+  - file: /tmp/cluster-upgrade.txt
+    exists: true
+solution: '클러스터 업그레이드 절차:
 
-    - file: "/tmp/cluster-upgrade.txt"
-      exists: true
-
-solution: |
-  클러스터 업그레이드 절차:
 
   ```bash
+
   # ========================================
+
   # 1. Control Plane 노드 업그레이드
+
   # ========================================
+
 
   # Control Plane 노드에 SSH 접속
+
   ssh controlplane
 
+
   # 현재 버전 확인
+
   kubectl version --short
+
   kubeadm version
+
 
   # 업그레이드 계획 확인
+
   sudo kubeadm upgrade plan
 
+
   # kubeadm 업그레이드 (1.28.0)
+
   sudo apt-mark unhold kubeadm
+
   sudo apt-get update
+
   sudo apt-get install -y kubeadm=1.28.0-00
+
   sudo apt-mark hold kubeadm
+
 
   # kubeadm 버전 확인
+
   kubeadm version
 
+
   # 업그레이드 적용 (첫 번째 control plane만)
+
   sudo kubeadm upgrade apply v1.28.0
 
+
   # kubelet과 kubectl 업그레이드
+
   sudo apt-mark unhold kubelet kubectl
+
   sudo apt-get install -y kubelet=1.28.0-00 kubectl=1.28.0-00
+
   sudo apt-mark hold kubelet kubectl
 
+
   # kubelet 재시작
+
   sudo systemctl daemon-reload
+
   sudo systemctl restart kubelet
+
 
   # 상태 확인
+
   sudo systemctl status kubelet
 
+
   # 클러스터에서 확인
+
   kubectl get nodes
 
+
   # ========================================
+
   # 2. Worker 노드 업그레이드 (각 노드별로)
+
   # ========================================
+
 
   # Control Plane에서 노드 drain
+
   kubectl drain node01 --ignore-daemonsets --delete-emptydir-data
 
+
   # Worker 노드에 SSH 접속
+
   ssh node01
 
+
   # kubeadm 업그레이드
+
   sudo apt-mark unhold kubeadm
+
   sudo apt-get update
+
   sudo apt-get install -y kubeadm=1.28.0-00
+
   sudo apt-mark hold kubeadm
 
+
   # kubeadm으로 노드 업그레이드
+
   sudo kubeadm upgrade node
 
+
   # kubelet과 kubectl 업그레이드
+
   sudo apt-mark unhold kubelet kubectl
+
   sudo apt-get install -y kubelet=1.28.0-00 kubectl=1.28.0-00
+
   sudo apt-mark hold kubelet kubectl
 
+
   # kubelet 재시작
+
   sudo systemctl daemon-reload
+
   sudo systemctl restart kubelet
 
+
   # Control Plane으로 돌아가기
+
   exit
 
+
   # 노드 uncordon (스케줄링 재개)
+
   kubectl uncordon node01
 
+
   # 노드 상태 확인
+
   kubectl get nodes
+
 
   # 다른 Worker 노드도 같은 방식으로 반복
 
+
   # ========================================
+
   # 3. 업그레이드 검증
+
   # ========================================
+
 
   # 모든 노드 버전 확인
+
   kubectl get nodes -o wide
 
+
   # Component 상태 확인
+
   kubectl get componentstatuses
 
+
   # System Pod 확인
+
   kubectl get pods -n kube-system
 
+
   # 업그레이드 결과 저장
+
   cat > /tmp/cluster-upgrade.txt << EOF
+
   Cluster Upgrade Report
+
   ======================
+
 
   Target Version: v1.28.0
 
+
   Before Upgrade:
+
   - Control Plane: v1.27.0
+
   - Workers: v1.27.0
 
+
   After Upgrade:
+
   $(kubectl get nodes)
 
+
   Component Versions:
+
   - kubeadm: $(kubeadm version -o short)
+
   - kubelet: $(kubelet --version)
+
   - kubectl: $(kubectl version --client --short)
 
+
   Upgrade Steps Completed:
+
   1. ✓ Control Plane upgraded
+
   2. ✓ Worker nodes upgraded
+
   3. ✓ All nodes Running
+
   4. ✓ All system pods Running
 
+
   Issues Encountered: None
+
   EOF
 
+
   cat /tmp/cluster-upgrade.txt
+
   ```
+
 
   중요 명령어 요약:
+
   ```bash
+
   # apt 패키지 hold 해제/설정
+
   sudo apt-mark unhold kubeadm kubelet kubectl
+
   sudo apt-mark hold kubeadm kubelet kubectl
 
+
   # 특정 버전 설치
+
   sudo apt-get install -y kubeadm=1.28.0-00
 
+
   # 사용 가능한 버전 확인
+
   apt-cache madison kubeadm
 
+
   # 업그레이드 계획 확인
+
   sudo kubeadm upgrade plan
 
+
   # 업그레이드 적용
+
   sudo kubeadm upgrade apply v1.28.0  # Control plane
+
   sudo kubeadm upgrade node           # Worker node
 
+
   # 노드 관리
+
   kubectl drain <node> --ignore-daemonsets
+
   kubectl uncordon <node>
+
   kubectl cordon <node>
 
+
   # systemd 관리
+
   sudo systemctl daemon-reload
+
   sudo systemctl restart kubelet
+
   ```
 
-explanation: |
-  kubeadm을 사용한 클러스터 업그레이드를 평가합니다.
-
-  업그레이드 원칙:
-  1. 한 번에 한 마이너 버전만 (1.27 -> 1.28)
-  2. Control Plane 먼저, Worker 나중에
-  3. 한 번에 하나의 노드만
-  4. etcd 백업 먼저 (실전)
-  5. 테스트 환경에서 먼저 검증
-
-  업그레이드 순서:
-  1. Control Plane:
-     - kubeadm 업그레이드
-     - kubeadm upgrade apply
-     - kubelet/kubectl 업그레이드
-     - kubelet 재시작
-
-  2. Worker Node (각각):
-     - kubectl drain (Pod 제거)
-     - kubeadm 업그레이드
-     - kubeadm upgrade node
-     - kubelet/kubectl 업그레이드
-     - kubelet 재시작
-     - kubectl uncordon
-
-  3. 검증:
-     - kubectl get nodes
-     - kubectl get pods --all-namespaces
-     - kubectl get componentstatuses
-
-  주의사항:
-  - apt-mark hold로 자동 업그레이드 방지
-  - drain 시 --ignore-daemonsets 필수
-  - PDB (PodDisruptionBudget) 고려
-  - 업그레이드 중 일부 Pod는 중단됨
-  - etcd 백업 필수 (실전)
-
-  HA (고가용성) 클러스터:
-  - 첫 번째 Control Plane: upgrade apply
-  - 나머지 Control Plane: upgrade node
-  - Worker는 동일
-
-  롤백:
-  - kubeadm은 롤백 미지원
-  - etcd 백업에서 복구 필요
-  - 따라서 백업이 매우 중요
-
-  실무 팁:
-  - 업그레이드 전 etcd 백업 필수
-  - 릴리스 노트 확인
-  - 테스트 환경 검증
-  - 점진적 업그레이드 (staging -> prod)
-  - 업그레이드 창구 시간 계획
-  - 롤백 계획 준비
-
+  '
+explanation: "kubeadm을 사용한 클러스터 업그레이드를 평가합니다.\n\n업그레이드 원칙:\n1. 한 번에 한 마이너 버전만 (1.27\
+  \ -> 1.28)\n2. Control Plane 먼저, Worker 나중에\n3. 한 번에 하나의 노드만\n4. etcd 백업 먼저 (실전)\n\
+  5. 테스트 환경에서 먼저 검증\n\n업그레이드 순서:\n1. Control Plane:\n   - kubeadm 업그레이드\n   - kubeadm\
+  \ upgrade apply\n   - kubelet/kubectl 업그레이드\n   - kubelet 재시작\n\n2. Worker Node\
+  \ (각각):\n   - kubectl drain (Pod 제거)\n   - kubeadm 업그레이드\n   - kubeadm upgrade node\n\
+  \   - kubelet/kubectl 업그레이드\n   - kubelet 재시작\n   - kubectl uncordon\n\n3. 검증:\n\
+  \   - kubectl get nodes\n   - kubectl get pods --all-namespaces\n   - kubectl get\
+  \ componentstatuses\n\n주의사항:\n- apt-mark hold로 자동 업그레이드 방지\n- drain 시 --ignore-daemonsets\
+  \ 필수\n- PDB (PodDisruptionBudget) 고려\n- 업그레이드 중 일부 Pod는 중단됨\n- etcd 백업 필수 (실전)\n\
+  \nHA (고가용성) 클러스터:\n- 첫 번째 Control Plane: upgrade apply\n- 나머지 Control Plane: upgrade\
+  \ node\n- Worker는 동일\n\n롤백:\n- kubeadm은 롤백 미지원\n- etcd 백업에서 복구 필요\n- 따라서 백업이 매우\
+  \ 중요\n\n실무 팁:\n- 업그레이드 전 etcd 백업 필수\n- 릴리스 노트 확인\n- 테스트 환경 검증\n- 점진적 업그레이드 (staging\
+  \ -> prod)\n- 업그레이드 창구 시간 계획\n- 롤백 계획 준비\n"
 references:
-  - "https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-upgrade/"
-  - "https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/"
+- https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-upgrade/
+- https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/
+context: cluster3

@@ -1,389 +1,119 @@
-id: "A028"
-title: "멀티 포트 Service 구성"
-domain: "Services & Networking"
-difficulty: "easy"
+id: A028
+title: 멀티 포트 Service 구성
+domain: Services & Networking
+difficulty: easy
 weight: 4
 time_estimate: 7
+description: 'Context: kubectl config use-context cluster1
 
-description: |
-  Context: kubectl config use-context cluster1
 
   웹 애플리케이션이 HTTP와 HTTPS 두 포트를 모두 제공해야 합니다.
+
   하나의 Service로 여러 포트를 노출하는 구성이 필요합니다.
 
-task: |
-  다음 요구사항을 만족하는 리소스를 생성하세요:
-
-  1. Deployment:
-     - 이름: webapp-deploy
-     - 네임스페이스: default
-     - 레플리카: 2
-     - 컨테이너 이미지: nginx:latest
-     - 레이블: app=webapp, tier=frontend
-     - 컨테이너 포트: 80 (http), 443 (https)
-
-  2. Service:
-     - 이름: webapp-service
-     - 네임스페이스: default
-     - 타입: ClusterIP
-     - Selector: app=webapp
-     - 포트 설정:
-       * http: 포트 80 → targetPort 80
-       * https: 포트 443 → targetPort 443
-
-  3. 검증:
-     - 테스트 Pod에서 http://webapp-service:80 접속 성공
-     - 테스트 Pod에서 http://webapp-service:443 접속 성공
-
+  '
+task: "다음 요구사항을 만족하는 리소스를 생성하세요:\n\n1. Deployment:\n   - 이름: webapp-deploy\n   - 네임스페이스:\
+  \ default\n   - 레플리카: 2\n   - 컨테이너 이미지: nginx:latest\n   - 레이블: app=webapp, tier=frontend\n\
+  \   - 컨테이너 포트: 80 (http), 443 (https)\n\n2. Service:\n   - 이름: webapp-service\n\
+  \   - 네임스페이스: default\n   - 타입: ClusterIP\n   - Selector: app=webapp\n   - 포트 설정:\n\
+  \     * http: 포트 80 → targetPort 80\n     * https: 포트 443 → targetPort 443\n\n3.\
+  \ 검증:\n   - 테스트 Pod에서 http://webapp-service:80 접속 성공\n   - 테스트 Pod에서 http://webapp-service:443\
+  \ 접속 성공\n"
 hints:
-  - "Service의 ports는 배열로 여러 포트 정의 가능"
-  - "각 포트에 name 지정 필수 (멀티 포트 시)"
-  - "targetPort는 Pod의 containerPort와 매칭"
-
+- Service의 ports는 배열로 여러 포트 정의 가능
+- 각 포트에 name 지정 필수 (멀티 포트 시)
+- targetPort는 Pod의 containerPort와 매칭
 validation:
   checks:
-    - resource: "deployment"
-      name: "webapp-deploy"
-      namespace: "default"
-
-    - resource: "service"
-      name: "webapp-service"
-      namespace: "default"
-
-    - custom_check: |
-        # Service에 2개 포트가 정의되어 있는지 확인
-        PORT_COUNT=$(kubectl get svc webapp-service -n default -o jsonpath='{.spec.ports[*].port}' | wc -w)
-        if [ "$PORT_COUNT" -eq 2 ]; then
-          echo "PASS"
-        else
-          echo "FAIL: Service should have 2 ports, found $PORT_COUNT"
-        fi
-
-solution: |
-  멀티 포트 Service 구성:
-
-  ```bash
-  # 1. Deployment 생성
-  cat <<EOF | kubectl apply -f -
-  apiVersion: apps/v1
-  kind: Deployment
-  metadata:
+  - resource: deployment
     name: webapp-deploy
     namespace: default
-  spec:
-    replicas: 2
-    selector:
-      matchLabels:
-        app: webapp
-    template:
-      metadata:
-        labels:
-          app: webapp
-          tier: frontend
-      spec:
-        containers:
-        - name: nginx
-          image: nginx:latest
-          ports:
-          - containerPort: 80
-            name: http
-          - containerPort: 443
-            name: https
-  EOF
-
-  # 2. Multi-port Service 생성
-  cat <<EOF | kubectl apply -f -
-  apiVersion: v1
-  kind: Service
-  metadata:
+  - resource: service
     name: webapp-service
     namespace: default
-  spec:
-    type: ClusterIP
-    selector:
-      app: webapp
-    ports:
-    - name: http        # 이름 필수!
-      port: 80          # Service 포트
-      targetPort: 80    # Pod 포트
-      protocol: TCP
-    - name: https       # 이름 필수!
-      port: 443         # Service 포트
-      targetPort: 443   # Pod 포트
-      protocol: TCP
-  EOF
-
-  # 3. 확인
-  kubectl get deployment webapp-deploy
-  kubectl get pods -l app=webapp
-  kubectl get svc webapp-service
-
-  # Service 상세 정보
-  kubectl describe svc webapp-service
-  # Port:              http  80/TCP
-  # TargetPort:        80/TCP
-  # Port:              https  443/TCP
-  # TargetPort:        443/TCP
-  # Endpoints:         10.244.1.5:80,10.244.1.6:80 + 2 more...
-
-  # Endpoints 확인
-  kubectl get endpoints webapp-service
-  # NAME             ENDPOINTS                         AGE
-  # webapp-service   10.244.1.5:80,10.244.1.6:80,...   1m
-
-  # 4. 연결 테스트
-  # 테스트 Pod 생성
-  kubectl run test-pod --image=curlimages/curl:latest --rm -it --restart=Never -- sh
-
-  # Pod 내부에서 테스트:
-  curl http://webapp-service:80
-  # <!DOCTYPE html>... (nginx 응답)
-
-  curl http://webapp-service:443
-  # 연결 성공 (인증서 경고는 무시)
-
-  # 또는 외부에서 테스트
-  kubectl run curl-test --image=curlimages/curl:latest --rm -it --restart=Never \
-    -- curl -s http://webapp-service:80
-
-  # 5. DNS 확인
-  kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup webapp-service
-  # Server:    10.96.0.10
-  # Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
-  #
-  # Name:      webapp-service
-  # Address 1: 10.96.123.45 webapp-service.default.svc.cluster.local
-
-  # 6. Service 포트 정보 확인
-  kubectl get svc webapp-service -o jsonpath='{.spec.ports[*].name}'
-  # http https
-
-  kubectl get svc webapp-service -o jsonpath='{.spec.ports[*].port}'
-  # 80 443
-  ```
-
-explanation: |
-  멀티 포트 Service 구성을 평가합니다.
-
-  멀티 포트 Service란:
-  - 하나의 Service에서 여러 포트 노출
-  - 각 포트마다 이름 지정 필수
-  - 같은 selector로 Pod 선택
-  - 모든 포트가 같은 Endpoints로 라우팅
-
-  포트 정의 필드:
-
-  1. **name** (멀티 포트 시 필수):
-     ```yaml
-     ports:
-     - name: http    # 포트 이름
-       port: 80
-     - name: https   # 각 포트마다 고유한 이름
-       port: 443
-     ```
-     - 단일 포트면 생략 가능
-     - 멀티 포트면 필수
-     - DNS SRV 레코드에 사용됨
-
-  2. **port** (필수):
-     - Service가 노출하는 포트
-     - 클라이언트가 접속하는 포트
-     - 예: 80, 443, 8080
-
-  3. **targetPort** (선택):
-     - Pod의 실제 포트
-     - 생략 시 port와 동일
-     - 이름 또는 숫자로 지정
-     ```yaml
-     targetPort: http  # Pod의 containerPort name
-     targetPort: 8080  # 숫자
-     ```
-
-  4. **protocol** (선택):
-     - TCP (기본값)
-     - UDP
-     - SCTP
-
-  5. **nodePort** (NodePort/LoadBalancer 시):
-     - 노드에서 열리는 포트
-     - 30000-32767 범위
-     - 생략 시 자동 할당
-
-  실제 사용 사례:
-
-  1. **웹 애플리케이션**:
-     ```yaml
-     ports:
-     - name: http
-       port: 80
-       targetPort: 8080
-     - name: https
-       port: 443
-       targetPort: 8443
-     - name: metrics
-       port: 9090
-       targetPort: 9090
-     ```
-
-  2. **데이터베이스**:
-     ```yaml
-     ports:
-     - name: postgres
-       port: 5432
-       targetPort: 5432
-     - name: metrics
-       port: 9187
-       targetPort: 9187
-     ```
-
-  3. **gRPC + HTTP**:
-     ```yaml
-     ports:
-     - name: grpc
-       port: 50051
-       targetPort: 50051
-     - name: http
-       port: 8080
-       targetPort: 8080
-     ```
-
-  Named Port 사용:
-
-  Pod에서 포트 이름 정의:
-  ```yaml
-  containers:
-  - name: app
-    ports:
-    - containerPort: 8080
-      name: http-port
-    - containerPort: 9090
-      name: metrics
-  ```
-
-  Service에서 이름으로 참조:
-  ```yaml
-  ports:
-  - name: http
-    port: 80
-    targetPort: http-port  # 포트 이름 사용
-  - name: metrics
-    port: 9090
-    targetPort: metrics
-  ```
-
-  장점:
-  - Pod 포트 변경 시 Service 수정 불필요
-  - 가독성 향상
-  - 유지보수 편리
-
-  NodePort 멀티 포트:
-  ```yaml
-  apiVersion: v1
-  kind: Service
-  metadata:
-    name: webapp-nodeport
-  spec:
-    type: NodePort
-    selector:
-      app: webapp
-    ports:
-    - name: http
-      port: 80
-      targetPort: 80
-      nodePort: 30080  # 선택사항
-    - name: https
-      port: 443
-      targetPort: 443
-      nodePort: 30443
-  ```
-
-  LoadBalancer 멀티 포트:
-  ```yaml
-  apiVersion: v1
-  kind: Service
-  metadata:
-    name: webapp-lb
-  spec:
-    type: LoadBalancer
-    selector:
-      app: webapp
-    ports:
-    - name: http
-      port: 80
-      targetPort: 8080
-    - name: https
-      port: 443
-      targetPort: 8443
-  ```
-
-  DNS SRV 레코드:
-  ```bash
-  # Service: webapp-service
-  # Ports: http (80), https (443)
-
-  # DNS A 레코드 (IP)
-  nslookup webapp-service.default.svc.cluster.local
-  # 10.96.123.45
-
-  # DNS SRV 레코드 (포트 정보 포함)
-  dig _http._tcp.webapp-service.default.svc.cluster.local SRV
-  # _http._tcp.webapp-service.default.svc.cluster.local. 30 IN SRV 0 100 80 webapp-service.default.svc.cluster.local.
-
-  dig _https._tcp.webapp-service.default.svc.cluster.local SRV
-  # _https._tcp.webapp-service.default.svc.cluster.local. 30 IN SRV 0 100 443 webapp-service.default.svc.cluster.local.
-  ```
-
-  Endpoints 확인:
-  ```bash
-  kubectl get endpoints webapp-service -o yaml
-  ```
-  ```yaml
-  apiVersion: v1
-  kind: Endpoints
-  metadata:
-    name: webapp-service
-  subsets:
-  - addresses:
-    - ip: 10.244.1.5
-    - ip: 10.244.1.6
-    ports:
-    - name: http
-      port: 80
-      protocol: TCP
-    - name: https
-      port: 443
-      protocol: TCP
-  ```
-
-  주의사항:
-  - 멀티 포트 시 name 필수
-  - 각 포트 이름은 고유해야 함
-  - targetPort는 Pod의 containerPort와 일치
-  - protocol 생략 시 TCP (대부분의 경우)
-
-  실무 팁:
-  - 포트 이름은 의미 있게 (http, https, grpc, metrics 등)
-  - Named port 사용 권장 (유지보수 편리)
-  - 불필요한 포트 노출 금지 (보안)
-  - 메트릭 포트 분리 (모니터링용)
-
-  트러블슈팅:
-  ```bash
-  # Service 포트 확인
-  kubectl get svc <service-name> -o jsonpath='{.spec.ports[*]}'
-
-  # Endpoints 확인
-  kubectl get endpoints <service-name>
-
-  # 특정 포트 연결 테스트
-  kubectl run -it --rm test --image=busybox --restart=Never \
-    -- telnet <service-name> <port>
-
-  # curl 테스트
-  kubectl run -it --rm test --image=curlimages/curl --restart=Never \
-    -- curl <service-name>:<port>
-  ```
-
+  - custom_check: "# Service에 2개 포트가 정의되어 있는지 확인\nPORT_COUNT=$(kubectl get svc webapp-service\
+      \ -n default -o jsonpath='{.spec.ports[*].port}' | wc -w)\nif [ \"$PORT_COUNT\"\
+      \ -eq 2 ]; then\n  echo \"PASS\"\nelse\n  echo \"FAIL: Service should have 2\
+      \ ports, found $PORT_COUNT\"\nfi\n"
+solution: "멀티 포트 Service 구성:\n\n```bash\n# 1. Deployment 생성\ncat <<EOF | kubectl apply\
+  \ -f -\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: webapp-deploy\n\
+  \  namespace: default\nspec:\n  replicas: 2\n  selector:\n    matchLabels:\n   \
+  \   app: webapp\n  template:\n    metadata:\n      labels:\n        app: webapp\n\
+  \        tier: frontend\n    spec:\n      containers:\n      - name: nginx\n   \
+  \     image: nginx:latest\n        ports:\n        - containerPort: 80\n       \
+  \   name: http\n        - containerPort: 443\n          name: https\nEOF\n\n# 2.\
+  \ Multi-port Service 생성\ncat <<EOF | kubectl apply -f -\napiVersion: v1\nkind: Service\n\
+  metadata:\n  name: webapp-service\n  namespace: default\nspec:\n  type: ClusterIP\n\
+  \  selector:\n    app: webapp\n  ports:\n  - name: http        # 이름 필수!\n    port:\
+  \ 80          # Service 포트\n    targetPort: 80    # Pod 포트\n    protocol: TCP\n\
+  \  - name: https       # 이름 필수!\n    port: 443         # Service 포트\n    targetPort:\
+  \ 443   # Pod 포트\n    protocol: TCP\nEOF\n\n# 3. 확인\nkubectl get deployment webapp-deploy\n\
+  kubectl get pods -l app=webapp\nkubectl get svc webapp-service\n\n# Service 상세 정보\n\
+  kubectl describe svc webapp-service\n# Port:              http  80/TCP\n# TargetPort:\
+  \        80/TCP\n# Port:              https  443/TCP\n# TargetPort:        443/TCP\n\
+  # Endpoints:         10.244.1.5:80,10.244.1.6:80 + 2 more...\n\n# Endpoints 확인\n\
+  kubectl get endpoints webapp-service\n# NAME             ENDPOINTS             \
+  \            AGE\n# webapp-service   10.244.1.5:80,10.244.1.6:80,...   1m\n\n# 4.\
+  \ 연결 테스트\n# 테스트 Pod 생성\nkubectl run test-pod --image=curlimages/curl:latest --rm\
+  \ -it --restart=Never -- sh\n\n# Pod 내부에서 테스트:\ncurl http://webapp-service:80\n\
+  # <!DOCTYPE html>... (nginx 응답)\n\ncurl http://webapp-service:443\n# 연결 성공 (인증서\
+  \ 경고는 무시)\n\n# 또는 외부에서 테스트\nkubectl run curl-test --image=curlimages/curl:latest\
+  \ --rm -it --restart=Never \\\n  -- curl -s http://webapp-service:80\n\n# 5. DNS\
+  \ 확인\nkubectl run -it --rm debug --image=busybox --restart=Never -- nslookup webapp-service\n\
+  # Server:    10.96.0.10\n# Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local\n\
+  #\n# Name:      webapp-service\n# Address 1: 10.96.123.45 webapp-service.default.svc.cluster.local\n\
+  \n# 6. Service 포트 정보 확인\nkubectl get svc webapp-service -o jsonpath='{.spec.ports[*].name}'\n\
+  # http https\n\nkubectl get svc webapp-service -o jsonpath='{.spec.ports[*].port}'\n\
+  # 80 443\n```\n"
+explanation: "멀티 포트 Service 구성을 평가합니다.\n\n멀티 포트 Service란:\n- 하나의 Service에서 여러 포트 노출\n\
+  - 각 포트마다 이름 지정 필수\n- 같은 selector로 Pod 선택\n- 모든 포트가 같은 Endpoints로 라우팅\n\n포트 정의 필드:\n\
+  \n1. **name** (멀티 포트 시 필수):\n   ```yaml\n   ports:\n   - name: http    # 포트 이름\n\
+  \     port: 80\n   - name: https   # 각 포트마다 고유한 이름\n     port: 443\n   ```\n   -\
+  \ 단일 포트면 생략 가능\n   - 멀티 포트면 필수\n   - DNS SRV 레코드에 사용됨\n\n2. **port** (필수):\n   -\
+  \ Service가 노출하는 포트\n   - 클라이언트가 접속하는 포트\n   - 예: 80, 443, 8080\n\n3. **targetPort**\
+  \ (선택):\n   - Pod의 실제 포트\n   - 생략 시 port와 동일\n   - 이름 또는 숫자로 지정\n   ```yaml\n  \
+  \ targetPort: http  # Pod의 containerPort name\n   targetPort: 8080  # 숫자\n   ```\n\
+  \n4. **protocol** (선택):\n   - TCP (기본값)\n   - UDP\n   - SCTP\n\n5. **nodePort**\
+  \ (NodePort/LoadBalancer 시):\n   - 노드에서 열리는 포트\n   - 30000-32767 범위\n   - 생략 시 자동\
+  \ 할당\n\n실제 사용 사례:\n\n1. **웹 애플리케이션**:\n   ```yaml\n   ports:\n   - name: http\n\
+  \     port: 80\n     targetPort: 8080\n   - name: https\n     port: 443\n     targetPort:\
+  \ 8443\n   - name: metrics\n     port: 9090\n     targetPort: 9090\n   ```\n\n2.\
+  \ **데이터베이스**:\n   ```yaml\n   ports:\n   - name: postgres\n     port: 5432\n   \
+  \  targetPort: 5432\n   - name: metrics\n     port: 9187\n     targetPort: 9187\n\
+  \   ```\n\n3. **gRPC + HTTP**:\n   ```yaml\n   ports:\n   - name: grpc\n     port:\
+  \ 50051\n     targetPort: 50051\n   - name: http\n     port: 8080\n     targetPort:\
+  \ 8080\n   ```\n\nNamed Port 사용:\n\nPod에서 포트 이름 정의:\n```yaml\ncontainers:\n- name:\
+  \ app\n  ports:\n  - containerPort: 8080\n    name: http-port\n  - containerPort:\
+  \ 9090\n    name: metrics\n```\n\nService에서 이름으로 참조:\n```yaml\nports:\n- name: http\n\
+  \  port: 80\n  targetPort: http-port  # 포트 이름 사용\n- name: metrics\n  port: 9090\n\
+  \  targetPort: metrics\n```\n\n장점:\n- Pod 포트 변경 시 Service 수정 불필요\n- 가독성 향상\n- 유지보수\
+  \ 편리\n\nNodePort 멀티 포트:\n```yaml\napiVersion: v1\nkind: Service\nmetadata:\n  name:\
+  \ webapp-nodeport\nspec:\n  type: NodePort\n  selector:\n    app: webapp\n  ports:\n\
+  \  - name: http\n    port: 80\n    targetPort: 80\n    nodePort: 30080  # 선택사항\n\
+  \  - name: https\n    port: 443\n    targetPort: 443\n    nodePort: 30443\n```\n\
+  \nLoadBalancer 멀티 포트:\n```yaml\napiVersion: v1\nkind: Service\nmetadata:\n  name:\
+  \ webapp-lb\nspec:\n  type: LoadBalancer\n  selector:\n    app: webapp\n  ports:\n\
+  \  - name: http\n    port: 80\n    targetPort: 8080\n  - name: https\n    port:\
+  \ 443\n    targetPort: 8443\n```\n\nDNS SRV 레코드:\n```bash\n# Service: webapp-service\n\
+  # Ports: http (80), https (443)\n\n# DNS A 레코드 (IP)\nnslookup webapp-service.default.svc.cluster.local\n\
+  # 10.96.123.45\n\n# DNS SRV 레코드 (포트 정보 포함)\ndig _http._tcp.webapp-service.default.svc.cluster.local\
+  \ SRV\n# _http._tcp.webapp-service.default.svc.cluster.local. 30 IN SRV 0 100 80\
+  \ webapp-service.default.svc.cluster.local.\n\ndig _https._tcp.webapp-service.default.svc.cluster.local\
+  \ SRV\n# _https._tcp.webapp-service.default.svc.cluster.local. 30 IN SRV 0 100 443\
+  \ webapp-service.default.svc.cluster.local.\n```\n\nEndpoints 확인:\n```bash\nkubectl\
+  \ get endpoints webapp-service -o yaml\n```\n```yaml\napiVersion: v1\nkind: Endpoints\n\
+  metadata:\n  name: webapp-service\nsubsets:\n- addresses:\n  - ip: 10.244.1.5\n\
+  \  - ip: 10.244.1.6\n  ports:\n  - name: http\n    port: 80\n    protocol: TCP\n\
+  \  - name: https\n    port: 443\n    protocol: TCP\n```\n\n주의사항:\n- 멀티 포트 시 name\
+  \ 필수\n- 각 포트 이름은 고유해야 함\n- targetPort는 Pod의 containerPort와 일치\n- protocol 생략 시 TCP\
+  \ (대부분의 경우)\n\n실무 팁:\n- 포트 이름은 의미 있게 (http, https, grpc, metrics 등)\n- Named port\
+  \ 사용 권장 (유지보수 편리)\n- 불필요한 포트 노출 금지 (보안)\n- 메트릭 포트 분리 (모니터링용)\n\n트러블슈팅:\n```bash\n\
+  # Service 포트 확인\nkubectl get svc <service-name> -o jsonpath='{.spec.ports[*]}'\n\
+  \n# Endpoints 확인\nkubectl get endpoints <service-name>\n\n# 특정 포트 연결 테스트\nkubectl\
+  \ run -it --rm test --image=busybox --restart=Never \\\n  -- telnet <service-name>\
+  \ <port>\n\n# curl 테스트\nkubectl run -it --rm test --image=curlimages/curl --restart=Never\
+  \ \\\n  -- curl <service-name>:<port>\n```\n"
 references:
-  - "https://kubernetes.io/docs/concepts/services-networking/service/"
-  - "https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/"
+- https://kubernetes.io/docs/concepts/services-networking/service/
+- https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/
+context: cluster4
