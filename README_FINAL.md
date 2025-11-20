@@ -78,6 +78,9 @@ npm run dev
 # 2. Kubernetes 클러스터 생성
 ./scripts/create-cluster.sh
 
+# M2 Mac 사용자는 간소화된 클러스터 추천 (빠른 시작):
+./scripts/create-cluster-simple.sh
+
 # 3. 백엔드 시작
 pip3 install -r requirements.txt
 cd web/backend
@@ -88,6 +91,8 @@ cd web/react-frontend
 npm install
 npm run dev
 ```
+
+**🍎 M2 Mac 사용자:** 클러스터 생성 문제가 있다면 [M2 Mac 트러블슈팅 가이드](TROUBLESHOOTING_M2.md)를 참고하세요.
 
 ### 방법 3: CLI 모드 (기존)
 

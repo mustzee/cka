@@ -1,0 +1,195 @@
+# M2 Mac 트러블슈팅 가이드
+
+## 문제 1: Kind 클러스터 생성 실패 (kubelet 시작 실패)
+
+### 증상
+```
+[kubelet-check] It seems like the kubelet isn't running or healthy.
+ERROR: failed to create cluster: failed to init node with kubeadm
+```
+
+### 원인
+- Apple Silicon (ARM64) 아키텍처에서 cgroup 설정 문제
+- systemd cgroup 드라이버 미설정
+
+### 해결 방법
+
+#### 방법 1: 업데이트된 설정 사용 (권장)
+```bash
+# 기존 클러스터 삭제 (있다면)
+kind delete cluster --name cka-simulator
+
+# 업데이트된 설정으로 재생성
+./scripts/create-cluster.sh
+```
+
+업데이트된 `cluster/kind-config.yaml`에는 다음 사항이 포함되어 있습니다:
+- ✅ systemd cgroup 드라이버 설정
+- ✅ containerd systemd cgroup 활성화
+- ✅ ARM64 호환 이미지 SHA 명시
+
+#### 방법 2: 간소화된 클러스터 사용 (빠른 시작)
+```bash
+# 단일 노드 클러스터 (control-plane만)
+./scripts/create-cluster-simple.sh
+```
+
+장점:
+- ⚡ 빠른 시작 (약 1분)
+- 💻 낮은 리소스 사용
+- ✅ 대부분의 CKA 문제 연습 가능
+
+단점:
+- ❌ 멀티 노드 관련 문제 연습 제한 (Node Affinity, Taints 등)
+
+## 문제 2: Docker Desktop 미실행
+
+### 증상
+```
+Cannot connect to the Docker daemon at unix:///Users/.../.docker/run/docker.sock
+```
+
+### 해결 방법
+1. Docker Desktop 실행
+2. Docker가 완전히 시작될 때까지 대기 (상단 바 아이콘 확인)
+3. 터미널에서 확인:
+```bash
+docker ps
+```
+
+## 문제 3: YAML 파싱 오류
+
+### 증상
+```
+문제 로드 실패: while parsing a block collection
+expected <block end>, but found '<scalar>'
+```
+
+### 해결 방법
+이미 수정되었습니다! 최신 코드를 사용하세요:
+```bash
+git pull origin claude/kubernetes-cka-simulator-013GwqESTvKa7XKSicghN6J3
+```
+
+## 문제 4: 리소스 부족 (메모리/CPU)
+
+### 증상
+- 클러스터 생성이 매우 느림
+- 노드가 NotReady 상태
+
+### 해결 방법
+
+#### Docker Desktop 리소스 증가
+1. Docker Desktop 설정 열기
+2. Resources → Advanced
+3. 권장 설정:
+   - **CPU**: 4 cores 이상
+   - **Memory**: 8 GB 이상
+   - **Swap**: 2 GB
+   - **Disk**: 60 GB
+
+#### 간소화된 클러스터 사용
+```bash
+./scripts/create-cluster-simple.sh
+```
+
+## 문제 5: Kind 설치 확인
+
+### Kind 버전 확인
+```bash
+kind version
+```
+
+### Kind 재설치 (필요시)
+```bash
+# Homebrew 사용
+brew install kind
+
+# 또는 직접 다운로드
+curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-darwin-arm64
+chmod +x ./kind
+sudo mv ./kind /usr/local/bin/kind
+```
+
+### kubectl 설치 확인
+```bash
+kubectl version --client
+```
+
+### kubectl 설치 (필요시)
+```bash
+brew install kubectl
+```
+
+## 유용한 명령어
+
+### 클러스터 상태 확인
+```bash
+# 클러스터 목록
+kind get clusters
+
+# 노드 상태
+kubectl get nodes -o wide
+
+# 시스템 Pod 확인
+kubectl get pods -n kube-system
+
+# 클러스터 정보
+kubectl cluster-info
+```
+
+### 클러스터 초기화
+```bash
+# 완전 삭제 후 재생성
+kind delete cluster --name cka-simulator
+./scripts/create-cluster.sh
+```
+
+### 로그 확인
+```bash
+# Docker 컨테이너 확인
+docker ps -a | grep cka-simulator
+
+# Control plane 로그
+docker logs cka-simulator-control-plane
+
+# Kubelet 로그 (컨테이너 내부)
+docker exec cka-simulator-control-plane journalctl -u kubelet
+```
+
+## 권장 워크플로우
+
+### M2 Mac 사용자 추천 순서
+
+1. **Docker Desktop 실행 확인**
+```bash
+docker ps
+```
+
+2. **간소화된 클러스터로 시작** (첫 시도)
+```bash
+./scripts/create-cluster-simple.sh
+```
+
+3. **시뮬레이터 테스트**
+```bash
+python3 simulator/main.py --type A --practice
+```
+
+4. **성공 후 필요시 전체 클러스터로 업그레이드**
+```bash
+kind delete cluster --name cka-simulator
+./scripts/create-cluster.sh
+```
+
+## 추가 도움
+
+문제가 지속되면:
+1. Docker Desktop 재시작
+2. 시스템 재부팅
+3. Kind 버전 업데이트
+4. GitHub Issues에 보고
+
+---
+
+**참고**: M2 Mac에서 가장 안정적인 방법은 `kind-config-simple.yaml` (단일 노드)를 사용하는 것입니다.
