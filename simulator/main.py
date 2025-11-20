@@ -35,6 +35,7 @@ class CKASimulator:
         self.timer = ExamTimer(duration_minutes=120 if not practice_mode else 999999)
         self.questions = []
         self.current_question_idx = 0
+        self.auto_yes = False  # 자동 확인 모드
 
     def show_welcome(self):
         """환영 메시지 표시"""
@@ -156,9 +157,17 @@ class CKASimulator:
         # 환영 메시지
         self.show_welcome()
 
-        if not Confirm.ask("\n시험을 시작하시겠습니까?"):
-            console.print("[yellow]시험이 취소되었습니다.[/yellow]")
-            return
+        # 자동 확인 모드가 아닐 때만 물어봄
+        if not self.auto_yes:
+            try:
+                if not Confirm.ask("\n시험을 시작하시겠습니까?"):
+                    console.print("[yellow]시험이 취소되었습니다.[/yellow]")
+                    return
+            except EOFError:
+                # 비대화형 환경에서는 자동으로 시작
+                console.print("[yellow]비대화형 모드: 자동으로 시험을 시작합니다...[/yellow]")
+        else:
+            console.print("[yellow]자동 확인 모드: 시험을 시작합니다...[/yellow]")
 
         # 문제 로드
         self.load_questions()
@@ -183,11 +192,16 @@ class CKASimulator:
             self.show_timer()
 
             # 사용자 입력 대기
-            choice = Prompt.ask(
-                "\n선택하세요",
-                choices=["next", "prev", "list", "skip", "finish", "quit"],
-                default="next",
-            )
+            try:
+                choice = Prompt.ask(
+                    "\n선택하세요",
+                    choices=["next", "prev", "list", "skip", "finish", "quit"],
+                    default="next",
+                )
+            except EOFError:
+                # 비대화형 환경에서는 자동으로 다음 문제로
+                choice = "next"
+                console.print("[dim]비대화형 모드: 자동으로 다음 문제로 진행...[/dim]")
 
             if choice == "next":
                 if self.current_question_idx < len(self.questions) - 1:
@@ -211,11 +225,18 @@ class CKASimulator:
                     self.current_question_idx += 1
 
             elif choice == "finish":
-                if Confirm.ask("\n시험을 종료하고 채점하시겠습니까?"):
+                try:
+                    if self.auto_yes or Confirm.ask("\n시험을 종료하고 채점하시겠습니까?"):
+                        break
+                except EOFError:
                     break
 
             elif choice == "quit":
-                if Confirm.ask("\n정말로 시험을 중단하시겠습니까? (채점되지 않습니다)"):
+                try:
+                    if self.auto_yes or Confirm.ask("\n정말로 시험을 중단하시겠습니까? (채점되지 않습니다)"):
+                        console.print("[yellow]시험이 중단되었습니다.[/yellow]")
+                        return
+                except EOFError:
                     console.print("[yellow]시험이 중단되었습니다.[/yellow]")
                     return
 
@@ -278,7 +299,19 @@ class CKASimulator:
     is_flag=True,
     help="연습 모드 (타이머 없음)",
 )
-def main(exam_type, practice):
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="모든 확인 질문에 자동으로 yes 응답 (비대화형 모드)",
+)
+@click.option(
+    "--list-only",
+    "-l",
+    is_flag=True,
+    help="문제 목록만 표시하고 종료 (클러스터 불필요)",
+)
+def main(exam_type, practice, yes, list_only):
     """
     CKA 시험 시뮬레이터
 
@@ -288,8 +321,34 @@ def main(exam_type, practice):
         # 결과 디렉토리 생성
         os.makedirs("results", exist_ok=True)
 
-        # 시뮬레이터 실행
+        # 시뮬레이터 생성
         simulator = CKASimulator(exam_type=exam_type, practice_mode=practice)
+        simulator.auto_yes = yes  # 자동 확인 모드 설정
+
+        # 문제 목록만 보기 모드
+        if list_only:
+            console.print(f"[bold cyan]시험 타입 {exam_type} 문제 목록[/bold cyan]\n")
+            simulator.load_questions()
+            simulator.show_question_list()
+
+            # 각 문제의 상세 내용도 표시
+            console.print("\n[bold]문제 상세 내용:[/bold]\n")
+            for idx, question in enumerate(simulator.questions, 1):
+                console.print(f"\n{'='*80}")
+                console.print(f"[bold cyan]문제 {idx}: {question.get('title', '')}[/bold cyan]")
+                console.print(f"[bold]ID:[/bold] {question.get('id', '')}")
+                console.print(f"[bold]도메인:[/bold] {question.get('domain', '')}")
+                console.print(f"[bold]난이도:[/bold] {question.get('difficulty', '')}")
+                console.print(f"[bold]배점:[/bold] {question.get('weight', 0)}점")
+                console.print(f"\n{question.get('description', '')}")
+                console.print(f"\n{question.get('task', '')}")
+                if 'hints' in question and question['hints']:
+                    console.print(f"\n[bold green]힌트:[/bold green]")
+                    for hint in question['hints']:
+                        console.print(f"  💡 {hint}")
+            return
+
+        # 일반 시험 모드
         simulator.run_exam()
 
     except KeyboardInterrupt:
