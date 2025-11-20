@@ -21,5 +21,5 @@ echo ""
 echo "종료하려면 Ctrl+C를 누르세요."
 echo ""
 
-cd web/backend
-python3 -m uvicorn app:app --reload --host 0.0.0.0 --port 8000
+# 루트 디렉토리에서 실행 (questions/ 디렉토리 접근 가능)
+python3 -m uvicorn web.backend.app:app --reload --host 0.0.0.0 --port 8000
