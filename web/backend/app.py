@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 import sys
 import os
+import subprocess
 
 # 부모 디렉토리를 경로에 추가
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -80,6 +81,12 @@ class GradeResponse(BaseModel):
     results: List[Dict[str, Any]]
 
 
+class ResetResponse(BaseModel):
+    success: bool
+    message: str
+    details: Optional[str] = None
+
+
 # 활성 세션 저장 (메모리)
 active_sessions: Dict[str, ExamSession] = {}
 
@@ -94,6 +101,7 @@ async def root():
             "questions": "/api/questions",
             "exam_start": "/api/exam/start",
             "exam_grade": "/api/exam/grade",
+            "exam_reset": "/api/exam/reset",
             "statistics": "/api/statistics",
         },
     }
@@ -293,6 +301,59 @@ async def get_domain_statistics():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/exam/reset")
+async def reset_exam_environment():
+    """시험 환경 리셋"""
+    try:
+        # 리셋 스크립트 경로 찾기
+        script_dir = os.path.join(os.path.dirname(__file__), "..", "..", "scripts")
+        reset_script = os.path.join(script_dir, "reset-exam.sh")
+        
+        if not os.path.exists(reset_script):
+            return ResetResponse(
+                success=False,
+                message="리셋 스크립트를 찾을 수 없습니다",
+                details=f"경로: {reset_script}"
+            )
+        
+        # 스크립트 실행
+        result = subprocess.run(
+            ["/bin/bash", reset_script],
+            capture_output=True,
+            text=True,
+            timeout=60  # 1분 타임아웃
+        )
+        
+        if result.returncode == 0:
+            # 활성 세션도 정리
+            active_sessions.clear()
+            
+            return ResetResponse(
+                success=True,
+                message="시험 환경이 성공적으로 리셋되었습니다",
+                details="모든 시험 관련 리소스와 활성 세션이 정리되었습니다"
+            )
+        else:
+            return ResetResponse(
+                success=False,
+                message="리셋 실행 중 오류가 발생했습니다",
+                details=result.stderr if result.stderr else result.stdout
+            )
+    
+    except subprocess.TimeoutExpired:
+        return ResetResponse(
+            success=False,
+            message="리셋 실행 시간 초과",
+            details="리셋 스크립트가 1분 내에 완료되지 않았습니다"
+        )
+    except Exception as e:
+        return ResetResponse(
+            success=False,
+            message="리셋 중 예상치 못한 오류가 발생했습니다",
+            details=str(e)
+        )
 
 
 @app.get("/health")

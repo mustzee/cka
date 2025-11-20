@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useExam } from '../context/ExamContext'
-import { Play, Brain, TrendingUp, Award } from 'lucide-react'
+import { Play, Brain, TrendingUp, Award, RotateCcw } from 'lucide-react'
 
 const Home = () => {
   const navigate = useNavigate()
@@ -9,6 +9,7 @@ const Home = () => {
   const [selectedType, setSelectedType] = useState('A')
   const [practiceMode, setPracticeMode] = useState(false)
   const [setNumber, setSetNumber] = useState(1)
+  const [isResetting, setIsResetting] = useState(false)
 
   useEffect(() => {
     loadExamTypes()
@@ -16,6 +17,38 @@ const Home = () => {
 
   const handleStartExam = () => {
     navigate('/exam', { state: { examType: selectedType, practiceMode, setNumber } })
+  }
+
+  const handleReset = async () => {
+    if (!confirm('정말로 모든 시험 환경을 리셋하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+      return
+    }
+
+    setIsResetting(true)
+    try {
+      const response = await fetch('/api/exam/reset', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        alert(`✅ ${result.message}`)
+      } else {
+        alert(`❌ 리셋 실패: ${result.message}`)
+        if (result.details) {
+          console.error('리셋 오류 세부사항:', result.details)
+        }
+      }
+    } catch (error) {
+      console.error('리셋 요청 실패:', error)
+      alert('❌ 리셋 요청 중 네트워크 오류가 발생했습니다.')
+    } finally {
+      setIsResetting(false)
+    }
   }
 
   return (
@@ -132,20 +165,32 @@ const Home = () => {
                 </button>
 
                 {/* Additional Buttons */}
-                <div className="grid grid-cols-2 gap-4 mt-4">
+                <div className="grid grid-cols-3 gap-3 mt-4">
                   <button
                     onClick={() => navigate('/statistics')}
-                    className="bg-white/20 text-white font-bold py-4 px-6 rounded-xl hover:bg-white/30 transition-all flex items-center justify-center gap-2"
+                    className="bg-white/20 text-white font-bold py-4 px-4 rounded-xl hover:bg-white/30 transition-all flex items-center justify-center gap-2"
                   >
-                    <TrendingUp className="w-5 h-5" />
+                    <TrendingUp className="w-4 h-4" />
                     통계
                   </button>
                   <button
                     onClick={() => navigate('/recommendations')}
-                    className="bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold py-4 px-6 rounded-xl hover:from-purple-600 hover:to-pink-600 transition-all flex items-center justify-center gap-2"
+                    className="bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold py-4 px-4 rounded-xl hover:from-purple-600 hover:to-pink-600 transition-all flex items-center justify-center gap-2"
                   >
-                    <Brain className="w-5 h-5" />
+                    <Brain className="w-4 h-4" />
                     AI 추천
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    disabled={isResetting}
+                    className={`text-white font-bold py-4 px-4 rounded-xl transition-all flex items-center justify-center gap-2 ${
+                      isResetting 
+                        ? 'bg-gray-500 cursor-not-allowed' 
+                        : 'bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600'
+                    }`}
+                  >
+                    <RotateCcw className={`w-4 h-4 ${isResetting ? 'animate-spin' : ''}`} />
+                    {isResetting ? '리셋중...' : '환경 리셋'}
                   </button>
                 </div>
               </div>
@@ -158,7 +203,7 @@ const Home = () => {
           {[
             { icon: '⚡', title: '실시간 채점', desc: '즉시 결과 확인' },
             { icon: '📊', title: '상세 통계', desc: '진행률 추적' },
-            { icon: '📜', title: 'PDF 리포트', desc: '인증서 발급' },
+            { icon: '🔄', title: '빠른 리셋', desc: '환경 초기화 5초' },
             { icon: '🧠', title: 'AI 추천', desc: '맞춤 문제 제공' }
           ].map((feature, idx) => (
             <div key={idx} className="glassmorphism p-6 rounded-xl text-center text-white">

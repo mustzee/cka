@@ -377,6 +377,7 @@ python3 simulator/main.py --yes
 ./scripts/start-web.sh
 
 # 브라우저에서 http://localhost:8000/docs 접속
+# 웹에서도 환경 리셋 버튼 제공
 ```
 
 ## 🐛 트러블슈팅
