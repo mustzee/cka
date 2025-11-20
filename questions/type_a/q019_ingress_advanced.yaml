@@ -1,0 +1,193 @@
+id: "A019"
+title: "Ingress 경로 기반 라우팅 구성"
+domain: "Services & Networking"
+difficulty: "medium"
+weight: 6
+time_estimate: 12
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  회사의 웹 애플리케이션을 단일 도메인에서 경로 기반으로 라우팅해야 합니다.
+  Ingress 리소스를 생성하여 다음 요구사항을 만족해야 합니다.
+
+task: |
+  다음 요구사항을 만족하는 Ingress를 생성하세요:
+
+  1. Ingress 정보:
+     - 이름: app-ingress
+     - 네임스페이스: production
+     - IngressClass: nginx (annotation 사용)
+
+  2. 라우팅 규칙:
+     - 호스트: app.example.com
+     - /api -> api-service:8080
+     - /web -> web-service:80
+     - / -> default-service:80
+
+  3. TLS 설정:
+     - Secret: app-tls-secret (이미 존재함)
+     - Hosts: app.example.com
+
+  4. 추가 요구사항:
+     - path type: Prefix
+     - 모든 서비스는 production 네임스페이스에 존재
+
+hints:
+  - "kubectl create ingress --help로 기본 구조 확인"
+  - "rules, paths, backend 구조 이해 필요"
+  - "여러 path를 하나의 host 아래 정의"
+  - "tls 섹션은 별도로 정의"
+
+validation:
+  checks:
+    - resource: "ingress"
+      name: "app-ingress"
+      namespace: "production"
+
+solution: |
+  Ingress 생성:
+
+  ```bash
+  # 방법 1: YAML 파일로 생성
+  cat <<EOF | kubectl apply -f -
+  apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    name: app-ingress
+    namespace: production
+    annotations:
+      kubernetes.io/ingress.class: nginx
+      nginx.ingress.kubernetes.io/rewrite-target: /
+  spec:
+    tls:
+    - hosts:
+      - app.example.com
+      secretName: app-tls-secret
+    rules:
+    - host: app.example.com
+      http:
+        paths:
+        - path: /api
+          pathType: Prefix
+          backend:
+            service:
+              name: api-service
+              port:
+                number: 8080
+        - path: /web
+          pathType: Prefix
+          backend:
+            service:
+              name: web-service
+              port:
+                number: 80
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: default-service
+              port:
+                number: 80
+  EOF
+
+  # 방법 2: kubectl create 명령어 (부분적)
+  kubectl create ingress app-ingress \
+    --rule="app.example.com/api*=api-service:8080" \
+    --rule="app.example.com/web*=web-service:80" \
+    --rule="app.example.com/*=default-service:80" \
+    --class=nginx \
+    -n production --dry-run=client -o yaml > ingress.yaml
+
+  # TLS 설정 추가 (YAML 편집 필요)
+  kubectl edit -f ingress.yaml
+
+  # 확인
+  kubectl get ingress -n production
+  kubectl describe ingress app-ingress -n production
+
+  # Ingress Controller Pod 확인
+  kubectl get pods -n ingress-nginx
+
+  # 테스트 (클러스터 내부에서)
+  kubectl run test --rm -i --tty --image=curlimages/curl -n production -- \
+    curl -H "Host: app.example.com" http://<ingress-ip>/api
+
+  kubectl run test --rm -i --tty --image=curlimages/curl -n production -- \
+    curl -H "Host: app.example.com" http://<ingress-ip>/web
+
+  # Ingress IP 확인
+  kubectl get ingress app-ingress -n production -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+  ```
+
+  Path Type 설명:
+  ```yaml
+  # Exact: 정확히 일치
+  pathType: Exact
+  path: /api
+  # /api만 매칭, /api/users는 매칭 안 됨
+
+  # Prefix: 경로 접두사 매칭 (가장 많이 사용)
+  pathType: Prefix
+  path: /api
+  # /api, /api/, /api/users 모두 매칭
+
+  # ImplementationSpecific: Ingress Controller 구현에 따름
+  pathType: ImplementationSpecific
+  ```
+
+explanation: |
+  Ingress 경로 기반 라우팅을 평가합니다.
+
+  주요 개념:
+  1. Ingress 구조:
+     - rules: 라우팅 규칙 정의
+     - host: 도메인 이름
+     - paths: 경로별 backend 지정
+     - tls: HTTPS 설정
+
+  2. Path Type:
+     - Exact: 정확한 경로만 매칭
+     - Prefix: 접두사 매칭 (권장)
+     - ImplementationSpecific: Controller 의존
+
+  3. Backend:
+     - service.name: 서비스 이름
+     - service.port.number: 포트 번호
+     - 또는 service.port.name: 포트 이름
+
+  4. TLS 설정:
+     - hosts: TLS 적용할 호스트
+     - secretName: 인증서 Secret
+     - Secret은 tls type이어야 함
+
+  Ingress Controller:
+  - NGINX Ingress Controller (가장 많이 사용)
+  - Traefik
+  - HAProxy
+  - Kong
+  - 클러스터에 설치되어 있어야 함
+
+  실무 패턴:
+  ```yaml
+  # 여러 서비스를 하나의 도메인으로
+  app.example.com/api -> API 서비스
+  app.example.com/web -> 웹 서비스
+  app.example.com/admin -> 관리 서비스
+
+  # 여러 도메인 라우팅
+  api.example.com -> API 서비스
+  www.example.com -> 웹 서비스
+  admin.example.com -> 관리 서비스
+  ```
+
+  주요 Annotations:
+  - nginx.ingress.kubernetes.io/rewrite-target: URL 재작성
+  - nginx.ingress.kubernetes.io/ssl-redirect: HTTPS 리다이렉트
+  - nginx.ingress.kubernetes.io/rate-limit: 속도 제한
+  - nginx.ingress.kubernetes.io/cors-allow-origin: CORS 설정
+
+references:
+  - "https://kubernetes.io/docs/concepts/services-networking/ingress/"
+  - "https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/"
+  - "https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/annotations/"

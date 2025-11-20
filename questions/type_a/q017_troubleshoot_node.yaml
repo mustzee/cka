@@ -1,0 +1,173 @@
+id: "A017"
+title: "Node NotReady 트러블슈팅"
+domain: "Troubleshooting"
+difficulty: "hard"
+weight: 10
+time_estimate: 20
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  worker 노드 중 하나가 NotReady 상태입니다.
+  SSH로 노드에 접속하여 문제를 진단하고 해결해야 합니다.
+
+task: |
+  다음 작업을 수행하세요:
+
+  1. NotReady 상태인 노드를 찾으세요
+  2. 노드에 SSH로 접속하여 문제의 근본 원인을 파악하세요
+  3. 노드를 Ready 상태로 복구하세요
+  4. 발견한 문제와 해결 방법을 /tmp/node-troubleshoot.txt에 작성하세요
+
+  참고: 노드 이름에 'worker'가 포함된 노드 중 하나가 문제입니다
+
+hints:
+  - "kubectl get nodes로 NotReady 노드 확인"
+  - "kubectl describe node로 상세 정보 확인"
+  - "노드에 SSH 접속 가능 (예: ssh node01)"
+  - "systemctl status kubelet으로 kubelet 상태 확인"
+  - "journalctl -u kubelet로 로그 확인"
+
+validation:
+  checks:
+    - custom_check: |
+        # 모든 노드가 Ready 상태인지 확인
+        NOT_READY=$(kubectl get nodes --no-headers | grep -v " Ready " | wc -l)
+        if [ "$NOT_READY" -eq 0 ]; then
+          echo "PASS"
+        else
+          echo "FAIL: Still have NotReady nodes"
+        fi
+
+    - file: "/tmp/node-troubleshoot.txt"
+      exists: true
+
+solution: |
+  트러블슈팅 단계:
+
+  ```bash
+  # 1. NotReady 노드 찾기
+  kubectl get nodes
+  kubectl get nodes | grep NotReady
+
+  # 2. 노드 상세 정보 확인
+  kubectl describe node <node-name>
+  # Conditions 섹션 확인:
+  # - Ready: False
+  # - Reason: KubeletNotReady
+  # - Message: 확인
+
+  # 3. 노드에 SSH 접속
+  ssh <node-name>
+
+  # 4. kubelet 상태 확인
+  sudo systemctl status kubelet
+
+  # 일반적인 원인과 해결:
+
+  # 원인 1: kubelet 서비스가 중지됨
+  sudo systemctl start kubelet
+  sudo systemctl enable kubelet
+
+  # 원인 2: kubelet 구성 오류
+  sudo journalctl -u kubelet -n 50
+  # /var/lib/kubelet/config.yaml 확인
+  # /etc/kubernetes/kubelet.conf 확인
+
+  # 원인 3: 디스크 공간 부족
+  df -h
+  # /var/lib/kubelet, /var/lib/docker 정리
+  sudo docker system prune -f
+
+  # 원인 4: 메모리 부족
+  free -h
+  # 불필요한 프로세스 종료
+
+  # 원인 5: 인증서 만료
+  sudo kubeadm certs check-expiration
+  sudo kubeadm certs renew all
+  sudo systemctl restart kubelet
+
+  # 원인 6: CNI 플러그인 문제
+  ls -la /etc/cni/net.d/
+  ls -la /opt/cni/bin/
+
+  # 5. kubelet 재시작 후 확인
+  sudo systemctl restart kubelet
+  sudo systemctl status kubelet
+
+  # 6. 클러스터에서 노드 상태 확인
+  kubectl get nodes -w
+
+  # 7. 해결 방법 문서화
+  cat > /tmp/node-troubleshoot.txt << EOF
+  NotReady 노드: <node-name>
+  문제 원인: [발견한 실제 원인]
+  해결 방법: [적용한 해결 방법]
+  결과: 노드가 Ready 상태로 복구됨
+  추가 조치: [필요한 경우 추가 조치]
+  EOF
+  ```
+
+  일반적인 kubelet 로그 확인:
+  ```bash
+  # 최근 로그 확인
+  sudo journalctl -u kubelet -f
+
+  # 특정 시간대 로그
+  sudo journalctl -u kubelet --since "10 minutes ago"
+
+  # 에러만 필터링
+  sudo journalctl -u kubelet | grep -i error
+
+  # 전체 로그 파일
+  sudo journalctl -u kubelet --no-pager > kubelet.log
+  ```
+
+explanation: |
+  Node NotReady 트러블슈팅을 평가합니다.
+
+  주요 원인들:
+  1. kubelet 서비스 문제:
+     - 서비스 중지됨
+     - 크래시 루프
+     - 구성 오류
+
+  2. 리소스 부족:
+     - 디스크 공간 (DiskPressure)
+     - 메모리 (MemoryPressure)
+     - PID 부족
+
+  3. 네트워크 문제:
+     - CNI 플러그인 오류
+     - DNS 해결 실패
+     - API 서버 연결 불가
+
+  4. 인증서 문제:
+     - 만료된 인증서
+     - 잘못된 권한
+     - CA 불일치
+
+  진단 절차:
+  1. kubectl describe node: 상태 확인
+  2. systemctl status kubelet: 서비스 상태
+  3. journalctl -u kubelet: 로그 분석
+  4. df -h, free -h: 리소스 확인
+  5. netstat, ping: 네트워크 확인
+
+  복구 순서:
+  1. 즉시 해결 가능한 문제부터
+  2. kubelet 재시작
+  3. 노드 재부팅 (최후 수단)
+  4. 노드 교체 (복구 불가능 시)
+
+  실무 팁:
+  - 로그는 항상 끝부터 읽기
+  - systemctl status만으로 부족
+  - journalctl -xe로 상세 정보
+  - 여러 노드 동시 장애 시 클러스터 레벨 문제 의심
+
+references:
+  - "https://kubernetes.io/docs/tasks/debug/debug-cluster/troubleshooting-kubeadm/"
+  - "https://kubernetes.io/docs/tasks/debug/debug-cluster/"
+  - "https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-certs/"

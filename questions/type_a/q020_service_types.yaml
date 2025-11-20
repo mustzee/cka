@@ -1,0 +1,231 @@
+id: "A020"
+title: "다양한 Service 타입 구성"
+domain: "Services & Networking"
+difficulty: "easy"
+weight: 5
+time_estimate: 10
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  하나의 애플리케이션을 다양한 Service 타입으로 노출해야 합니다.
+  각 Service 타입의 특성을 이해하고 올바르게 구성해야 합니다.
+
+task: |
+  production 네임스페이스에 다음 Service들을 생성하세요:
+
+  1. Internal Service (ClusterIP):
+     - 이름: db-service
+     - Selector: app=database
+     - Port: 5432
+     - TargetPort: 5432
+     - Type: ClusterIP
+
+  2. NodePort Service:
+     - 이름: api-nodeport
+     - Selector: app=api
+     - Port: 8080
+     - TargetPort: 8080
+     - NodePort: 30080
+     - Type: NodePort
+
+  3. LoadBalancer Service:
+     - 이름: web-loadbalancer
+     - Selector: app=web
+     - Port: 80
+     - TargetPort: 8000
+     - Type: LoadBalancer
+
+  참고: Pod들은 이미 적절한 label로 생성되어 있습니다.
+
+hints:
+  - "kubectl expose --help로 기본 구조 확인"
+  - "ClusterIP는 기본 타입"
+  - "NodePort는 30000-32767 범위"
+  - "type 필드로 Service 타입 지정"
+
+validation:
+  checks:
+    - resource: "service"
+      name: "db-service"
+      namespace: "production"
+      type: "ClusterIP"
+
+    - resource: "service"
+      name: "api-nodeport"
+      namespace: "production"
+      type: "NodePort"
+
+    - resource: "service"
+      name: "web-loadbalancer"
+      namespace: "production"
+      type: "LoadBalancer"
+
+solution: |
+  Service 생성:
+
+  ```bash
+  # 1. ClusterIP Service (내부 통신용)
+  kubectl create service clusterip db-service \
+    --tcp=5432:5432 \
+    -n production --dry-run=client -o yaml | \
+    kubectl set selector --local -f - 'app=database' -o yaml | \
+    kubectl apply -f -
+
+  # 또는 YAML로:
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: db-service
+    namespace: production
+  spec:
+    type: ClusterIP
+    selector:
+      app: database
+    ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+  EOF
+
+  # 2. NodePort Service (외부 접근 - 노드 IP:포트)
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: api-nodeport
+    namespace: production
+  spec:
+    type: NodePort
+    selector:
+      app: api
+    ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30080
+      protocol: TCP
+  EOF
+
+  # 3. LoadBalancer Service (외부 접근 - 로드밸런서)
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: web-loadbalancer
+    namespace: production
+  spec:
+    type: LoadBalancer
+    selector:
+      app: web
+    ports:
+    - port: 80
+      targetPort: 8000
+      protocol: TCP
+  EOF
+
+  # 확인
+  kubectl get svc -n production
+  kubectl get svc -n production -o wide
+
+  # ClusterIP 테스트 (클러스터 내부에서만)
+  kubectl run test --rm -i --tty --image=busybox -n production -- \
+    wget -O- http://db-service:5432
+
+  # NodePort 테스트
+  NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}')
+  curl http://$NODE_IP:30080
+
+  # LoadBalancer 테스트
+  LB_IP=$(kubectl get svc web-loadbalancer -n production -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+  curl http://$LB_IP
+
+  # Service Endpoints 확인 (실제 Pod IP)
+  kubectl get endpoints -n production
+  kubectl describe endpoints db-service -n production
+  ```
+
+  Service 타입 비교:
+  ```yaml
+  # ClusterIP (기본값)
+  - 용도: 클러스터 내부 통신
+  - 접근: 클러스터 내부에서만
+  - IP: 가상 IP (Cluster IP)
+  - 예: 데이터베이스, 내부 API
+
+  # NodePort
+  - 용도: 외부에서 직접 접근
+  - 접근: <NodeIP>:<NodePort>
+  - 포트 범위: 30000-32767
+  - ClusterIP도 자동 생성됨
+  - 예: 개발/테스트 환경
+
+  # LoadBalancer
+  - 용도: 프로덕션 외부 접근
+  - 접근: 로드밸런서 IP
+  - 클라우드 제공자 필요
+  - NodePort + ClusterIP 자동 생성
+  - 예: 웹 애플리케이션, API Gateway
+
+  # ExternalName (참고)
+  - 용도: 외부 DNS 이름 매핑
+  - 접근: DNS CNAME
+  - Selector 없음
+  - 예: 외부 데이터베이스
+  ```
+
+explanation: |
+  다양한 Service 타입 구성을 평가합니다.
+
+  Service 타입별 특징:
+
+  1. ClusterIP (기본):
+     - 클러스터 내부에서만 접근 가능
+     - 가상 IP 할당
+     - DNS로 접근 (service-name.namespace.svc.cluster.local)
+     - 가장 안전하고 기본적인 타입
+
+  2. NodePort:
+     - 모든 노드의 특정 포트로 접근 가능
+     - 포트 범위 제한 (30000-32767)
+     - ClusterIP도 함께 생성됨
+     - 방화벽 설정 필요
+
+  3. LoadBalancer:
+     - 외부 로드밸런서 프로비저닝
+     - 클라우드 제공자 필요 (AWS, GCP, Azure)
+     - 공인 IP 할당
+     - NodePort + ClusterIP도 생성됨
+     - 비용 발생 (클라우드 환경)
+
+  4. ExternalName:
+     - 외부 서비스를 DNS 이름으로 매핑
+     - Selector 사용 안 함
+     - Endpoint 없음
+
+  선택 기준:
+  - 내부 통신만: ClusterIP
+  - 개발/테스트: NodePort
+  - 프로덕션 외부 노출: LoadBalancer
+  - 외부 서비스 연결: ExternalName
+
+  실무 팁:
+  - 데이터베이스는 항상 ClusterIP
+  - API는 Ingress + ClusterIP 조합 권장
+  - 웹 애플리케이션은 LoadBalancer 또는 Ingress
+  - NodePort는 임시/개발 용도로만
+
+  주의사항:
+  - LoadBalancer는 클라우드 환경에서만 External IP 할당
+  - On-premise는 MetalLB 같은 솔루션 필요
+  - NodePort는 보안 위험 (모든 노드 노출)
+  - Service는 label selector로 Pod 선택
+
+  DNS 이름:
+  - 같은 네임스페이스: <service-name>
+  - 다른 네임스페이스: <service-name>.<namespace>
+  - 전체 FQDN: <service-name>.<namespace>.svc.cluster.local
+
+references:
+  - "https://kubernetes.io/docs/concepts/services-networking/service/"
+  - "https://kubernetes.io/docs/tutorials/services/connect-applications-service/"

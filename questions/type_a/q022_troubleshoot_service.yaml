@@ -1,0 +1,203 @@
+id: "A022"
+title: "Service 연결 트러블슈팅"
+domain: "Troubleshooting"
+difficulty: "medium"
+weight: 7
+time_estimate: 12
+
+description: |
+  Context: kubectl config use-context cluster1
+
+  production 네임스페이스의 my-app Service가 작동하지 않습니다.
+  클라이언트 Pod에서 Service로 연결할 수 없는 문제를 해결해야 합니다.
+
+task: |
+  다음 작업을 수행하세요:
+
+  1. my-app Service의 연결 문제를 진단하세요
+  2. 문제를 수정하여 Service가 정상 작동하도록 하세요
+  3. 클라이언트 Pod에서 Service로 연결 테스트를 수행하세요
+  4. 발견한 문제와 해결 방법을 /tmp/service-fix.txt에 저장하세요
+
+  참고: Service와 Pod는 이미 생성되어 있습니다
+
+hints:
+  - "kubectl get svc로 Service 확인"
+  - "kubectl get endpoints로 Endpoints 확인"
+  - "label selector 확인"
+  - "kubectl exec로 연결 테스트"
+
+validation:
+  checks:
+    - resource: "service"
+      name: "my-app"
+      namespace: "production"
+
+    - custom_check: |
+        # Service endpoints가 있는지 확인
+        ENDPOINTS=$(kubectl get endpoints my-app -n production -o jsonpath='{.subsets[*].addresses[*].ip}')
+        if [ -n "$ENDPOINTS" ]; then
+          echo "PASS"
+        else
+          echo "FAIL: Service has no endpoints"
+        fi
+
+    - file: "/tmp/service-fix.txt"
+      exists: true
+
+solution: |
+  Service 트러블슈팅:
+
+  ```bash
+  # 1. Service 상태 확인
+  kubectl get svc my-app -n production
+  kubectl describe svc my-app -n production
+
+  # 2. Endpoints 확인 (가장 중요!)
+  kubectl get endpoints my-app -n production
+  kubectl describe endpoints my-app -n production
+
+  # 일반적인 문제들:
+
+  # 문제 1: Endpoints가 비어있음
+  # 원인: Label selector가 Pod의 label과 매칭되지 않음
+
+  # Pod의 label 확인
+  kubectl get pods -n production --show-labels
+
+  # Service의 selector 확인
+  kubectl get svc my-app -n production -o yaml | grep -A 5 selector
+
+  # 해결: Service의 selector 수정
+  kubectl edit svc my-app -n production
+  # selector를 Pod의 실제 label과 매칭되도록 수정
+  # 예: app=myapp -> app=my-app
+
+  # 문제 2: 잘못된 포트
+  # Service port와 targetPort 확인
+  kubectl get svc my-app -n production -o yaml
+
+  # Pod의 실제 포트 확인
+  kubectl get pods -n production -o yaml | grep containerPort
+
+  # 해결: Service의 targetPort 수정
+  kubectl edit svc my-app -n production
+  # targetPort를 Pod의 실제 containerPort와 매칭
+
+  # 문제 3: Pod가 Ready 상태가 아님
+  kubectl get pods -n production
+  kubectl describe pod <pod-name> -n production
+
+  # Readiness probe 확인
+  kubectl get pod <pod-name> -n production -o yaml | grep -A 10 readinessProbe
+
+  # 문제 4: 잘못된 네임스페이스
+  # Service와 Pod가 같은 네임스페이스에 있는지 확인
+
+  # 3. 수정 후 Endpoints 재확인
+  kubectl get endpoints my-app -n production -w
+
+  # Endpoints가 나타날 때까지 대기
+  # 정상: Endpoints에 Pod IP가 표시됨
+
+  # 4. 연결 테스트
+  # Service ClusterIP 확인
+  SVC_IP=$(kubectl get svc my-app -n production -o jsonpath='{.spec.clusterIP}')
+  echo "Service IP: $SVC_IP"
+
+  # 클라이언트 Pod에서 테스트
+  kubectl exec -n production client-pod -- curl -m 5 http://my-app:8080
+  kubectl exec -n production client-pod -- curl -m 5 http://$SVC_IP:8080
+
+  # DNS 테스트
+  kubectl exec -n production client-pod -- nslookup my-app
+
+  # 5. 결과 저장
+  cat > /tmp/service-fix.txt << EOF
+  Service Troubleshooting Report
+  ===============================
+
+  Service: my-app (production namespace)
+
+  Problem Found:
+  - [발견한 문제 기술]
+
+  Root Cause:
+  - [근본 원인 설명]
+
+  Solution Applied:
+  - [적용한 해결책]
+
+  Verification:
+  - Endpoints: $(kubectl get endpoints my-app -n production -o jsonpath='{.subsets[*].addresses[*].ip}')
+  - Connection Test: Success
+  - DNS Resolution: Working
+
+  Status: ✅ Resolved
+  EOF
+
+  cat /tmp/service-fix.txt
+  ```
+
+explanation: |
+  Service 연결 트러블슈팅을 평가합니다.
+
+  주요 점검 사항:
+  1. Endpoints:
+     - 가장 먼저 확인해야 할 항목
+     - 비어있으면 Service가 작동하지 않음
+     - Pod IP가 표시되어야 정상
+
+  2. Label Selector:
+     - Service의 selector와 Pod의 labels 매칭
+     - 대소문자 구분
+     - 오타 확인
+
+  3. Port 매핑:
+     - port: Service가 노출하는 포트
+     - targetPort: Pod의 실제 포트
+     - 매칭 필수
+
+  4. Pod 상태:
+     - Running 상태
+     - Ready 조건 만족
+     - Readiness probe 통과
+
+  일반적인 원인:
+  1. Label mismatch (가장 흔함):
+     - Service selector: app=my-app
+     - Pod label: app=myapp
+     - 해결: 하나를 수정
+
+  2. Port mismatch:
+     - Service targetPort: 8080
+     - Pod containerPort: 80
+     - 해결: targetPort 수정
+
+  3. Readiness probe 실패:
+     - Pod는 Running이지만 Ready 아님
+     - Endpoints에 포함 안 됨
+     - 해결: probe 설정 수정 또는 앱 수정
+
+  4. 네임스페이스 불일치:
+     - Service와 Pod가 다른 네임스페이스
+     - 해결: 같은 네임스페이스로
+
+  디버깅 순서:
+  1. kubectl get endpoints - 비어있는지 확인
+  2. kubectl get pods --show-labels - label 확인
+  3. kubectl describe svc - selector 확인
+  4. label 매칭 확인
+  5. port 매칭 확인
+  6. Pod Ready 상태 확인
+
+  실무 팁:
+  - Endpoints가 핵심!
+  - label은 정확히 매칭
+  - port와 targetPort 구분
+  - Service는 Ready Pod만 포함
+  - DNS 이름: <service>.<namespace>.svc.cluster.local
+
+references:
+  - "https://kubernetes.io/docs/tasks/debug/debug-application/debug-service/"
+  - "https://kubernetes.io/docs/concepts/services-networking/service/"
