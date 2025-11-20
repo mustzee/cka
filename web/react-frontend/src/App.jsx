@@ -4,6 +4,7 @@ import Home from './pages/Home'
 import ExamPage from './pages/ExamPage'
 import ResultsPage from './pages/ResultsPage'
 import StatisticsPage from './pages/StatisticsPage'
+import RecommendationsPage from './pages/RecommendationsPage'
 import { ExamProvider } from './context/ExamContext'
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
             <Route path="/exam" element={<ExamPage />} />
             <Route path="/results" element={<ResultsPage />} />
             <Route path="/statistics" element={<StatisticsPage />} />
+            <Route path="/recommendations" element={<RecommendationsPage />} />
           </Routes>
         </div>
       </ExamProvider>

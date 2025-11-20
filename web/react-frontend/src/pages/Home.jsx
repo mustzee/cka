@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useExam } from '../context/ExamContext'
-import { Play, BookOpen, TrendingUp, Award } from 'lucide-react'
+import { Play, Brain, TrendingUp, Award } from 'lucide-react'
 
 const Home = () => {
   const navigate = useNavigate()
@@ -141,10 +141,11 @@ const Home = () => {
                     통계
                   </button>
                   <button
-                    className="bg-white/20 text-white font-bold py-4 px-6 rounded-xl hover:bg-white/30 transition-all flex items-center justify-center gap-2"
+                    onClick={() => navigate('/recommendations')}
+                    className="bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold py-4 px-6 rounded-xl hover:from-purple-600 hover:to-pink-600 transition-all flex items-center justify-center gap-2"
                   >
-                    <BookOpen className="w-5 h-5" />
-                    가이드
+                    <Brain className="w-5 h-5" />
+                    AI 추천
                   </button>
                 </div>
               </div>
@@ -153,11 +154,12 @@ const Home = () => {
         </div>
 
         {/* Features */}
-        <div className="grid md:grid-cols-3 gap-6 mt-8">
+        <div className="grid md:grid-cols-4 gap-6 mt-8">
           {[
             { icon: '⚡', title: '실시간 채점', desc: '즉시 결과 확인' },
             { icon: '📊', title: '상세 통계', desc: '진행률 추적' },
-            { icon: '📜', title: 'PDF 리포트', desc: '인증서 발급' }
+            { icon: '📜', title: 'PDF 리포트', desc: '인증서 발급' },
+            { icon: '🧠', title: 'AI 추천', desc: '맞춤 문제 제공' }
           ].map((feature, idx) => (
             <div key={idx} className="glassmorphism p-6 rounded-xl text-center text-white">
               <div className="text-4xl mb-3">{feature.icon}</div>

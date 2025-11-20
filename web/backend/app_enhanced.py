@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from simulator.question_loader import QuestionLoader
 from simulator.grader import AutoGrader
+from simulator.ai_recommender import WeaknessAnalyzer, QuestionRecommender
 from web.backend.database import (
     init_db,
     save_exam_session,
@@ -55,6 +56,8 @@ question_loader = QuestionLoader()
 grader = AutoGrader()
 pdf_generator = PDFReportGenerator()
 cert_generator = CertificateGenerator()
+weakness_analyzer = WeaknessAnalyzer()
+question_recommender = QuestionRecommender(question_loader)
 
 # Active WebSocket Connections
 active_connections: Dict[str, WebSocket] = {}
@@ -111,7 +114,8 @@ async def root():
             "PDF Reports",
             "Certificate Generation",
             "Prometheus Metrics",
-            "Question Sets System"
+            "Question Sets System",
+            "AI-Powered Recommendations"
         ],
         "endpoints": {
             "questions": "/api/questions",
@@ -120,6 +124,8 @@ async def root():
             "pdf_report": "/api/exam/report/pdf/{session_id}",
             "certificate": "/api/exam/certificate/{session_id}",
             "statistics": "/api/statistics",
+            "recommendations": "/api/recommendations",
+            "weakness_analysis": "/api/analysis/weakness",
             "metrics": "/metrics",
             "websocket": "/ws/{session_id}"
         },
@@ -366,6 +372,101 @@ async def metrics():
         iter([generate_latest()]),
         media_type=CONTENT_TYPE_LATEST
     )
+
+
+@app.get("/api/analysis/weakness")
+async def get_weakness_analysis(limit: int = 10):
+    """약점 분석 조회 - 최근 시험 결과를 기반으로 약점 분석"""
+    try:
+        # 최근 시험 세션 조회
+        sessions = get_exam_sessions(limit=limit)
+
+        if not sessions:
+            return {
+                "message": "분석할 시험 기록이 없습니다",
+                "analysis": None
+            }
+
+        # 약점 분석
+        analysis = weakness_analyzer.analyze_performance(sessions)
+
+        return {
+            "message": "약점 분석 완료",
+            "sessions_analyzed": len(sessions),
+            "analysis": analysis
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/recommendations")
+async def get_recommendations(
+    count: int = 10,
+    target_exam_type: Optional[str] = None,
+    session_limit: int = 10
+):
+    """AI 기반 맞춤 문제 추천
+
+    Args:
+        count: 추천할 문제 개수 (기본 10개)
+        target_exam_type: 특정 타입 (A/B/C) 문제만 추천 (선택사항)
+        session_limit: 분석할 최근 시험 세션 개수 (기본 10개)
+    """
+    try:
+        # 최근 시험 세션 조회
+        sessions = get_exam_sessions(limit=session_limit)
+
+        if not sessions:
+            # 기록이 없으면 기본 문제 추천
+            return {
+                "message": "시험 기록이 없어 기본 문제를 추천합니다",
+                "recommendations": _get_default_recommendations(count, target_exam_type),
+                "analysis": None,
+                "learning_path": None
+            }
+
+        # AI 기반 추천
+        result = question_recommender.recommend_questions(
+            sessions,
+            count=count,
+            target_exam_type=target_exam_type
+        )
+
+        return {
+            "message": "AI 기반 맞춤 문제 추천 완료",
+            "sessions_analyzed": len(sessions),
+            "recommendations": result["recommendations"],
+            "analysis": result["analysis"],
+            "learning_path": result["learning_path"],
+            "strategy": result["strategy"]
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _get_default_recommendations(count: int, target_exam_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    """기본 문제 추천 (시험 기록이 없을 때)"""
+    recommendations = []
+    exam_type = target_exam_type or "A"
+
+    try:
+        # Set 1의 문제들을 기본으로 추천
+        questions = question_loader.load_questions(exam_type, set_number=1)
+
+        for i, q in enumerate(questions[:count]):
+            recommendations.append({
+                "question": q,
+                "reason": "기본 학습 문제입니다. 기초를 다지는데 도움이 됩니다.",
+                "priority": 1.0 - (i * 0.05),  # 순서대로 우선순위 감소
+                "difficulty": q.get("difficulty", "medium")
+            })
+
+    except Exception as e:
+        print(f"Error loading default recommendations: {e}")
+
+    return recommendations
 
 
 @app.get("/health")

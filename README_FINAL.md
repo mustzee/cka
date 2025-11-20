@@ -19,6 +19,7 @@
 - 📊 **Prometheus + Grafana**: 실시간 모니터링 및 메트릭
 - 🔄 **문제 세트 시스템**: 타입당 5개 세트 (반복 학습 가능)
 - 🎯 **고급 채점 기능**: JQ 필터, 커스텀 스크립트, 명령어 출력 검증
+- 🧠 **AI 맞춤 추천**: 약점 분석 기반 맞춤형 문제 추천
 
 ## 🎨 스크린샷
 
@@ -123,6 +124,12 @@ curl http://localhost:8000/api/exam/report/pdf/{session_id} -o report.pdf
 
 # 인증서 다운로드
 curl http://localhost:8000/api/exam/certificate/{session_id} -o cert.pdf
+
+# AI 맞춤 추천
+curl http://localhost:8000/api/recommendations?count=10
+
+# 약점 분석
+curl http://localhost:8000/api/analysis/weakness?limit=10
 ```
 
 ## 📁 프로젝트 구조
@@ -143,7 +150,8 @@ cka/
 ├── simulator/
 │   ├── main.py                # CLI 버전
 │   ├── grader.py              # 기본 채점
-│   └── grader_advanced.py     # 고급 채점
+│   ├── grader_advanced.py     # 고급 채점
+│   └── ai_recommender.py      # AI 추천 시스템
 ├── questions/
 │   ├── type_a/
 │   │   ├── set1/              # 세트 1 문제
@@ -214,6 +222,27 @@ Type B: 5개 세트 × 5문제 = 25문제
 Type C: 5개 세트 × 2문제 = 10문제
 ───────────────────────────────────
 총 110개 문제 (반복 학습 가능)
+```
+
+### 7. AI 맞춤 추천 시스템
+
+```python
+# 약점 분석 알고리즘
+- 도메인별 정확도 분석
+- 난이도별 성적 분석
+- 학습 추세 분석 (향상/정체/하락)
+- 취약점 스코어 계산
+
+# 맞춤 학습 전략
+- 기초 다지기 (50% 미만): 쉬운 문제 중심
+- 실력 향상 (50-70%): 중급 문제 균형
+- 숙련도 향상 (70-85%): 고급 문제 도전
+- 전문가 레벨 (85% 이상): 최고 난이도
+
+# 개인화된 학습 경로 제공
+- 단계별 목표 설정
+- 집중 학습 영역 추천
+- 우선순위 기반 문제 선택
 ```
 
 ## 📊 통계 대시보드
@@ -311,5 +340,6 @@ MIT License
 - 📜 PDF 리포트 & 인증서
 - 📊 Prometheus + Grafana
 - 🔄 110+ 문제 (5개 세트)
+- 🧠 AI 맞춤 추천 시스템
 
 **화이팅!** 🚀 CKA 합격까지 함께합니다!
